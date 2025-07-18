@@ -1,0 +1,22 @@
+# Archivos de sistema operativo y editores
+.DS_Store
+Thumbs.db
+*.sublime-project
+*.sublime-workspace
+.vscode/
+
+# Dependencias de Node (Frontend)
+vue_frontend/node_modules/
+vue_frontend/dist/ 
+# dist Si Vue.js genera una carpeta 'dist' para producción
+
+# Entorno virtual y caché de Python (Backend)
+flask_backend/__pycache__/
+flask_backend/_venv/
+flask_backend/.flaskenv
+flask_backend/*.pyc
+
+# Archivos de configuración locales (opcional)
+*.env
+.env.local
+.env.example
