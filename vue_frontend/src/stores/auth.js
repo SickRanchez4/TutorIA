@@ -10,61 +10,51 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => !!token.value && !!user.value)
 
   // Mock user database - In production, this would be handled by your backend
-  const mockUsers = [
-    {
-      id: 1,
-      email: 'profesor@universidad.edu',
-      password: 'profesor123',
-      role: 'professor',
-      name: 'Dr. Juan Pérez'
-    },
-    {
-      id: 2,
-      email: 'admin@universidad.edu', 
-      password: 'admin123',
-      role: 'admin',
-      name: 'María González'
-    }
-  ]
+  // const mockUsers = [
+  //   {
+  //     id: 1,
+  //     email: 'profesor@universidad.edu',
+  //     password: 'profesor123',
+  //     role: 'professor',
+  //     name: 'Dr. Juan Pérez'
+  //   },
+  //   {
+  //     id: 2,
+  //     email: 'admin@universidad.edu', 
+  //     password: 'admin123',
+  //     role: 'admin',
+  //     name: 'María González'
+  //   }
+  // ]
 
   const login = async (credentials) => {
     isLoading.value = true
     error.value = ''
 
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      // Validate credentials
-      const foundUser = mockUsers.find(
-        u => u.email === credentials.email && u.password === credentials.password
-      )
-
-      if (!foundUser) {
-        throw new Error('Credenciales inválidas')
+      const response = await fetch('http://localhost:5000/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(credentials)
+      })
+  
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Error de autenticación')
       }
-
-      // Generate mock JWT token
-      const mockToken = btoa(JSON.stringify({
-        userId: foundUser.id,
-        role: foundUser.role,
-        exp: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
-      }))
-
-      // Set user and token
-      user.value = {
-        id: foundUser.id,
-        email: foundUser.email,
-        role: foundUser.role,
-        name: foundUser.name
-      }
-      token.value = mockToken
-
-      // Store in localStorage
-      localStorage.setItem('auth_token', mockToken)
-      localStorage.setItem('user_data', JSON.stringify(user.value))
-
-      return { success: true, user: user.value }
+  
+      const data = await response.json()
+      
+      // Guardar token y datos del usuario
+      user.value = data.user
+      token.value = data.token
+      
+      localStorage.setItem('auth_token', data.token)
+      localStorage.setItem('user_data', JSON.stringify(data.user))
+  
+      return { success: true, user: data.user }
 
     } catch (err) {
       error.value = err.message
