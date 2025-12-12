@@ -22,12 +22,15 @@ def create_app(config_name=None):
             "No database configured. Set `DATABASE_URL` or the MSSQL_* environment variables: "
             "MSSQL_USER, MSSQL_PASSWORD, MSSQL_HOST, MSSQL_PORT, MSSQL_DB, MSSQL_DRIVER."
         )
-    
+
     # Initialize extensions
     db.init_app(app)
     JWTManager(app)
-    CORS(app)
-    
+
+    # CORS configuration: apply to all routes and blueprints, including error responses
+    frontend_origin = 'http://localhost:5173'
+    CORS(app, resources={r"/*": {"origins": frontend_origin}})
+
     # Register blueprints
     from routes.auth import auth_bp
     app.register_blueprint(auth_bp, url_prefix='/api/auth')

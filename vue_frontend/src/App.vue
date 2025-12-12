@@ -3,9 +3,9 @@
 </template>
 
 <script setup>
-// Main app component that renders the current route
+  // Main app component that renders the current route
 </script>
 
 <style>
-/* Global styles */
+  /* Global styles */
 </style>

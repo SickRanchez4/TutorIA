@@ -1,9 +1,23 @@
 <template>
   <div class="min-h-screen bg-gradient-to-br from-green-50 to-blue-50">
-    <nav class="bg-white shadow-sm border-b">
+    <!-- Sidebar Component -->
+    <Sidebar 
+      ref="sidebarRef" 
+      user-role="professor"
+      :on-logout="handleLogout" 
+    />
+    
+    <!-- Main Content with dynamic margin -->
+    <div
+      :class="[
+        'transition-all duration-300',
+        sidebarRef?.isOpen ? 'ml-64' : 'ml-0'
+      ]"
+    >
+      <nav class="bg-white shadow-sm border-b">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
-          <div class="flex items-center">
+          <div class="flex items-center ml-4">
             <h1 class="text-xl font-semibold text-gray-900">
               Portal del Profesor
             </h1>
@@ -12,18 +26,18 @@
             <span class="text-sm text-gray-700">
               Bienvenido, {{ authStore.user?.name }}
             </span>
-            <button
-              @click="handleLogout"
-              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors"
-            >
-              Cerrar Sesión
-            </button>
           </div>
         </div>
       </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+    <!-- Selected Materia Panel -->
+    <div v-if="sidebarRef?.selectedMateria" class="h-screen">
+      <MateriaPanel :materia="sidebarRef.selectedMateria" />
+    </div>
+    
+    <!-- Default Dashboard Content (when no materia is selected) -->
+    <main v-else class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div class="px-4 py-6 sm:px-0">
         <!-- Welcome Section -->
         <div class="bg-white overflow-hidden shadow-lg rounded-lg mb-8">
@@ -127,15 +141,19 @@
         </div>
       </div>
     </main>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import Sidebar from '../components/Sidebar.vue'
+import MateriaPanel from '../components/MateriaPanel.vue'
 
 const router = useRouter()
+const sidebarRef = ref(null)
 const authStore = useAuthStore()
 
 const getCurrentTime = computed(() => {

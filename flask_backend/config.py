@@ -2,34 +2,48 @@ import os
 from datetime import timedelta
 from urllib.parse import quote_plus
 
+# Ensure environment variables from a local .env are loaded
+from dotenv import load_dotenv
+load_dotenv()
+
 
 class Config:
     """Base config"""
-    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'dev-secret-key')
+    # Require JWT_SECRET_KEY to be set explicitly
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY')
+    if not JWT_SECRET_KEY:
+        raise RuntimeError(
+            "JWT_SECRET_KEY must be set in environment variables. "
+        )
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     @staticmethod
     def _build_mssql_uri():
-        """Attempt to build a SQL Server URI from environment variables.
+        """Return a SQLAlchemy-compatible URI.
 
-        Priority order:
-        Build a pyodbc-based SQLAlchemy URI using the MSSQL_* environment
-        the caller must provide the individual MSSQL_* values.
-        Return None if not enough information is available.
+        Priority:
+        1) Use DATABASE_URL if provided (assumed already valid for SQLAlchemy)
+        2) Otherwise build from MSSQL_* env vars.
+        Return None if not enough info is present.
         """
+        # 1) Allow a full DATABASE_URL provided by user
+        db_url = os.getenv('DATABASE_URL')
+        if db_url:
+            return db_url
+
+        # 2) Build from MSSQL_* pieces
         user = os.getenv('MSSQL_USER')
         password = os.getenv('MSSQL_PASSWORD')
         host = os.getenv('MSSQL_HOST', 'localhost')
         port = os.getenv('MSSQL_PORT', '1433')
-        db = os.getenv('MSSQL_DB', 'university')
+        db = os.getenv('MSSQL_DB', 'TutoriaDB')
         driver = os.getenv('MSSQL_DRIVER', 'ODBC Driver 17 for SQL Server')
 
-        # Require explicit user and password (no DATABASE_URL support)
         if user and password:
-            # Quote password and driver for inclusion in the URL
             user_enc = quote_plus(user)
             password_enc = quote_plus(password)
+            # encode driver for inclusion in query (spaces -> +)
             driver_enc = quote_plus(driver)
             return f'mssql+pyodbc://{user_enc}:{password_enc}@{host}:{port}/{db}?driver={driver_enc}'
 

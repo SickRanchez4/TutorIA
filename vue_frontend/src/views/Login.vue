@@ -97,8 +97,8 @@
           <div class="text-sm text-gray-600">
             <p class="mb-2"><strong>Credenciales de prueba:</strong></p>
             <div class="space-y-1">
-              <p><strong>Profesor:</strong> profesor@universidad.edu / profesor123</p>
-              <p><strong>Admin:</strong> admin@universidad.edu / admin123</p>
+              <p><strong>Profesor:</strong> profesor@tutoria.edu / password</p>
+              <p><strong>Admin:</strong> admin@tutoria.edu / password</p>
             </div>
           </div>
         </div>

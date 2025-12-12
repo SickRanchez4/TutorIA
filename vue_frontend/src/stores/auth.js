@@ -9,24 +9,6 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!token.value && !!user.value)
 
-  // Mock user database - In production, this would be handled by your backend
-  // const mockUsers = [
-  //   {
-  //     id: 1,
-  //     email: 'profesor@universidad.edu',
-  //     password: 'profesor123',
-  //     role: 'professor',
-  //     name: 'Dr. Juan Pérez'
-  //   },
-  //   {
-  //     id: 2,
-  //     email: 'admin@universidad.edu', 
-  //     password: 'admin123',
-  //     role: 'admin',
-  //     name: 'María González'
-  //   }
-  // ]
-
   const login = async (credentials) => {
     isLoading.value = true
     error.value = ''
@@ -46,13 +28,20 @@ export const useAuthStore = defineStore('auth', () => {
       }
   
       const data = await response.json()
-      
+
+      // Normalize user object: ensure `name` exists for UI components
+      const userObj = data.user || {}
+      if (!userObj.name) {
+        if (userObj.full_name) userObj.name = userObj.full_name
+        else if (userObj.first_name || userObj.last_name) userObj.name = `${userObj.first_name || ''}${userObj.first_name && userObj.last_name ? ' ' : ''}${userObj.last_name || ''}`.trim()
+      }
+
       // Guardar token y datos del usuario
-      user.value = data.user
+      user.value = userObj
       token.value = data.token
-      
+
       localStorage.setItem('auth_token', data.token)
-      localStorage.setItem('user_data', JSON.stringify(data.user))
+      localStorage.setItem('user_data', JSON.stringify(userObj))
   
       return { success: true, user: data.user }
 
@@ -79,14 +68,27 @@ export const useAuthStore = defineStore('auth', () => {
     if (storedToken && storedUser) {
       try {
         // Verify token hasn't expired
-        const tokenData = JSON.parse(atob(storedToken))
-        if (tokenData.exp && tokenData.exp > Date.now()) {
-          token.value = storedToken
-          user.value = JSON.parse(storedUser)
-        } else {
-          // Token expired, clear storage
-          logout()
-        }
+          // NOTE: JWT parsing here is best-effort. We only use it to check expiry if present.
+          let tokenValid = true
+          try {
+            const payload = JSON.parse(atob(storedToken.split('.')[1] || ''))
+            if (payload && payload.exp && payload.exp * 1000 < Date.now()) tokenValid = false
+          } catch (e) {
+            // ignore parse errors; assume token is valid
+          }
+
+          if (tokenValid) {
+            token.value = storedToken
+            // ensure stored user has `name` field
+            const parsedUser = JSON.parse(storedUser)
+            if (!parsedUser.name) {
+              parsedUser.name = parsedUser.full_name || `${parsedUser.first_name || ''}${parsedUser.first_name && parsedUser.last_name ? ' ' : ''}${parsedUser.last_name || ''}`.trim()
+            }
+            user.value = parsedUser
+          } else {
+            // Token expired, clear storage
+            logout()
+          }
       } catch (err) {
         // Invalid token, clear storage
         logout()

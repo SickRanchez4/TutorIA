@@ -15,6 +15,7 @@ flask_backend/__pycache__/
 flask_backend/_venv/
 flask_backend/.flaskenv
 flask_backend/*.pyc
+__pycache__/
 
 # Archivos de configuración locales (opcional)
 *.env
