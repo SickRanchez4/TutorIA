@@ -1,0 +1,67 @@
+{
+  "name": "TutorIA - Agente administrador de conocimiento",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "knowledge-admin", "responseMode": "responseNode", "options": {} },
+      "id": "b2c95628-09c4-4211-a2a3-0af5fb1f924a",
+      "name": "Webhook: Administrar conocimiento",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "tutoria-knowledge-admin"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nconst action = String(body.action || '').trim();\nconst cursoId = body.curso_id;\nconst institucionId = body.institucion_id;\nif (!cursoId || !institucionId) throw new Error('curso_id e institucion_id son obligatorios.');\nif (!['delete_document', 'clear_course'].includes(action)) throw new Error('action debe ser delete_document o clear_course.');\nconst archivo = action === 'delete_document' ? String(body.archivo || '').trim() : null;\nif (action === 'delete_document' && !archivo) throw new Error('archivo es obligatorio para delete_document.');\nreturn [{ json: { action, archivo, namespace: `curso_${cursoId}` } }];"
+      },
+      "id": "59622a9e-4758-48d8-9aec-ea1d054a92b4",
+      "name": "Validar acción del agente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{$env.PINECONE_HOST + '/vectors/delete'}}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Api-Key", "value": "={{$env.PINECONE_API_KEY}}" }, { "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.action === 'clear_course' ? { namespace: $json.namespace, deleteAll: true } : { namespace: $json.namespace, filter: { archivo: { '$eq': $json.archivo } } } }}",
+        "options": {}
+      },
+      "id": "3218752d-a08c-4372-ba45-62c3d37074b9",
+      "name": "Pinecone: Ejecutar acción",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 300]
+    },
+    {
+      "parameters": { "jsCode": "const request = $('Validar acción del agente').item.json;\nreturn [{ json: { success: true, action: request.action, namespace: request.namespace, archivo: request.archivo } }];" },
+      "id": "057b75d8-c2a4-4887-9099-195ff0014534",
+      "name": "Confirmar operación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{$json}}", "options": { "responseCode": 200 } },
+      "id": "36969dea-aa18-4c9d-a7ee-36dabd438b7d",
+      "name": "Responder al backend",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1240, 300]
+    }
+  ],
+  "connections": {
+    "Webhook: Administrar conocimiento": { "main": [[{ "node": "Validar acción del agente", "type": "main", "index": 0 }]] },
+    "Validar acción del agente": { "main": [[{ "node": "Pinecone: Ejecutar acción", "type": "main", "index": 0 }]] },
+    "Pinecone: Ejecutar acción": { "main": [[{ "node": "Confirmar operación", "type": "main", "index": 0 }]] },
+    "Confirmar operación": { "main": [[{ "node": "Responder al backend", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "versionId": "tutoria-knowledge-admin-v2"
+}

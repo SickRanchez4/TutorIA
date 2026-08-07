@@ -1,0 +1,125 @@
+{
+  "name": "TutorIA - Materiales PDF a Pinecone",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "upload-knowledge", "responseMode": "responseNode", "options": {} },
+      "id": "d08f7924-0a84-4df8-8e1e-406aa2352647",
+      "name": "Webhook: Recibir materiales",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "tutoria-upload-knowledge"
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $input.first();\nconst query = request.json.query || {};\nconst binary = request.binary || {};\nconst cursoId = query.curso_id;\nconst institucionId = query.institucion_id;\nif (!cursoId || !institucionId) throw new Error('curso_id e institucion_id son obligatorios.');\nconst files = Object.entries(binary);\nif (!files.length) throw new Error('No se recibieron archivos PDF en multipart/form-data.');\nreturn files.map(([key, file]) => {\n  if (file.mimeType !== 'application/pdf' && !String(file.fileName || '').toLowerCase().endsWith('.pdf')) throw new Error(`El archivo ${file.fileName || key} no es PDF.`);\n  return { json: { curso_id: Number(cursoId), institucion_id: String(institucionId), coordinador_id: query.coordinador_id ? String(query.coordinador_id) : null, namespace: `curso_${cursoId}`, archivo: file.fileName || key }, binary: { data: file } };\n});"
+      },
+      "id": "470d47c9-b776-4c2d-9be9-4a6ca7f90f1b",
+      "name": "Normalizar PDFs del backend",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": { "operation": "pdf", "binaryPropertyName": "data", "options": {} },
+      "id": "d04c3acf-51d6-46e1-9992-8fc5bd4c30c5",
+      "name": "Extraer texto de cada PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const sourceFiles = $('Normalizar PDFs del backend').all();\nconst outputs = $input.all();\nconst size = 1200;\nconst overlap = 150;\nconst chunks = [];\noutputs.forEach((item, fileIndex) => {\n  const source = sourceFiles[fileIndex]?.json;\n  const text = String(item.json.data || '').replace(/\\s+/g, ' ').trim();\n  if (!source || !text) return;\n  let chunkIndex = 0;\n  for (let start = 0; start < text.length; start += size - overlap) {\n    const texto = text.slice(start, start + size).trim();\n    if (texto.length < 30) continue;\n    const safeFile = source.archivo.replace(/[^a-zA-Z0-9_-]/g, '_');\n    chunks.push({ json: { ...source, texto, pagina: null, chunk_index: chunkIndex, vector_id: `curso_${source.curso_id}__${safeFile}__c${chunkIndex}` } });\n    chunkIndex += 1;\n    if (start + size >= text.length) break;\n  }\n});\nif (!chunks.length) throw new Error('No se extrajo texto utilizable de los PDF recibidos.');\nreturn chunks;"
+      },
+      "id": "d4167874-28dd-4943-a448-e1a1c624772f",
+      "name": "Dividir texto y crear metadatos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": { "jsCode": "const chunks = $input.all().map((item) => item.json);\nreturn [{ json: { chunks, input: chunks.map((chunk) => chunk.texto) } }];" },
+      "id": "7bd1a267-78ce-4d34-8e77-a4d2e9d20a23",
+      "name": "Agrupar solicitud de embeddings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Authorization", "value": "=Bearer {{$env.OPENAI_API_KEY}}" }, { "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { model: $env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small', input: $('Agrupar solicitud de embeddings').item.json.input } }}",
+        "options": {}
+      },
+      "id": "6dba948c-3bea-4d30-9595-3f93c8111534",
+      "name": "OpenAI: Generar embeddings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $('Agrupar solicitud de embeddings').item.json;\nconst embeddings = Array.isArray($json.data) ? $json.data : [];\nconst vectors = request.chunks.map((chunk, index) => ({ id: chunk.vector_id, values: embeddings.find((embedding) => embedding.index === index)?.embedding || embeddings[index]?.embedding, metadata: { institucion_id: chunk.institucion_id, curso_id: chunk.curso_id, archivo: chunk.archivo, pagina: chunk.pagina, chunk_index: chunk.chunk_index, texto: chunk.texto, indexed_at: new Date().toISOString() } })).filter((vector) => Array.isArray(vector.values) && vector.values.length);\nif (!vectors.length) throw new Error('OpenAI no devolvió embeddings válidos.');\nreturn [{ json: { namespace: request.chunks[0].namespace, vectors, chunks_indexados: vectors.length, archivos_procesados: new Set(request.chunks.map((chunk) => chunk.archivo)).size } }];"
+      },
+      "id": "02bb051d-5246-487b-b2f3-8d1b9ca4bf31",
+      "name": "Construir vectores Pinecone",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.PINECONE_HOST + '/vectors/upsert'}}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "Api-Key", "value": "={{$env.PINECONE_API_KEY}}" }, { "name": "Content-Type", "value": "application/json" }] },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { namespace: $json.namespace, vectors: $json.vectors } }}",
+        "options": {}
+      },
+      "id": "2b9814ed-e81d-4e0c-ae2d-4db5f547a124",
+      "name": "Pinecone: Upsert de vectores",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1920, 300]
+    },
+    {
+      "parameters": { "jsCode": "const data = $('Construir vectores Pinecone').item.json;\nreturn [{ json: { success: true, namespace: data.namespace, archivos_procesados: data.archivos_procesados, chunks_indexados: data.chunks_indexados, indexed_at: new Date().toISOString() } }];" },
+      "id": "570ee5f0-d0a9-4a65-b8d0-b2e25de1fa22",
+      "name": "Formatear carga exitosa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 300]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{$json}}", "options": { "responseCode": 200 } },
+      "id": "471f20e2-b4e9-458f-ac9c-dccef35cce49",
+      "name": "Responder al backend",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2400, 300]
+    }
+  ],
+  "connections": {
+    "Webhook: Recibir materiales": { "main": [[{ "node": "Normalizar PDFs del backend", "type": "main", "index": 0 }]] },
+    "Normalizar PDFs del backend": { "main": [[{ "node": "Extraer texto de cada PDF", "type": "main", "index": 0 }]] },
+    "Extraer texto de cada PDF": { "main": [[{ "node": "Dividir texto y crear metadatos", "type": "main", "index": 0 }]] },
+    "Dividir texto y crear metadatos": { "main": [[{ "node": "Agrupar solicitud de embeddings", "type": "main", "index": 0 }]] },
+    "Agrupar solicitud de embeddings": { "main": [[{ "node": "OpenAI: Generar embeddings", "type": "main", "index": 0 }]] },
+    "OpenAI: Generar embeddings": { "main": [[{ "node": "Construir vectores Pinecone", "type": "main", "index": 0 }]] },
+    "Construir vectores Pinecone": { "main": [[{ "node": "Pinecone: Upsert de vectores", "type": "main", "index": 0 }]] },
+    "Pinecone: Upsert de vectores": { "main": [[{ "node": "Formatear carga exitosa", "type": "main", "index": 0 }]] },
+    "Formatear carga exitosa": { "main": [[{ "node": "Responder al backend", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "versionId": "tutoria-upload-knowledge-v2"
+}
