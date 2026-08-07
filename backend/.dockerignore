@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+_venv/
+.env
+.env.*
+!.env.docker.example
+.pytest_cache/
+.coverage
