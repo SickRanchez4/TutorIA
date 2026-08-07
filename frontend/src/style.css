@@ -1,0 +1,197 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Root styles */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    background-color: #17181c;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-dark text-secondary antialiased;
+    background:
+      radial-gradient(1200px 700px at 88% -8%, rgba(124, 197, 118, 0.14), transparent 62%),
+      radial-gradient(900px 550px at -8% 105%, rgba(124, 197, 118, 0.08), transparent 58%),
+      radial-gradient(1000px 600px at 50% 40%, rgba(255, 255, 255, 0.03), transparent 65%),
+      #17181c;
+    min-height: 100vh;
+  }
+}
+
+/* Utilities / components */
+@layer components {
+  .card {
+    @apply bg-surface border border-white/[0.06] rounded-2xl shadow-card;
+  }
+
+  .border-thin {
+    @apply border border-white/[0.06];
+  }
+
+  .card-hover {
+    @apply card transition-all duration-300 hover:border-primary/30 hover:-translate-y-0.5 hover:shadow-glow;
+  }
+
+  .glass {
+    @apply bg-white/[0.04] backdrop-blur-md border border-white/[0.08];
+  }
+
+  .glow-primary {
+    box-shadow: 0 0 32px rgba(124, 197, 118, 0.18);
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 rounded-xl font-medium text-black bg-primary hover:bg-primary-light transition-all duration-200 shadow-sm hover:shadow-glow active:scale-[0.98];
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 rounded-xl font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-all duration-200 active:scale-[0.98];
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2 rounded-xl font-medium text-secondary/80 hover:text-secondary hover:bg-white/[0.06] transition-colors active:scale-[0.98];
+  }
+
+  .input-field {
+    @apply w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-secondary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/40 transition-all;
+  }
+
+  .badge-success {
+    @apply inline-flex items-center rounded-full bg-primary/15 px-3 py-1 text-xs font-medium text-primary-light;
+  }
+
+  .badge-default {
+    @apply inline-flex items-center rounded-full bg-white/[0.06] px-3 py-1 text-xs font-medium text-secondary/80;
+  }
+
+  .badge-danger {
+    @apply inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700;
+  }
+
+  .badge-warning {
+    @apply inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-700;
+  }
+
+  .header {
+    @apply bg-surface/80 backdrop-blur-md sticky top-0 z-10 border-b border-white/[0.06];
+  }
+
+  .header-title {
+    @apply text-lg font-bold text-secondary;
+  }
+
+  .header-subtitle {
+    @apply text-sm text-muted;
+  }
+
+  .fade-in {
+    animation: fade-in 0.35s ease-out;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden bg-white/[0.06] rounded-lg;
+  }
+
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.12);
+  transition: background-color 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #7cc576;
+}
+
+::-webkit-scrollbar-corner {
+  display: none;
+}
+
+/* Fix Vuetify text-fields and date pickers in dark theme */
+.v-text-field input,
+.v-text-field input[type="date"],
+.v-text-field input[type="text"],
+.v-text-field input[type="email"] {
+  color: #f3f4f6 !important;
+  background-color: transparent !important;
+}
+
+.v-text-field input::placeholder {
+  color: #9a9ba3 !important;
+  opacity: 1;
+}
+
+/* Date picker input styling */
+input[type="date"] {
+  color: #f3f4f6 !important;
+  background-color: transparent !important;
+  caret-color: #7cc576 !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.1);
+  cursor: pointer;
+}
+
+/* Ensure Vuetify components have correct text color */
+.v-card-title,
+.v-card-text,
+.v-icon {
+  color: #f3f4f6 !important;
+}
+
+.v-label {
+  color: #9a9ba3 !important;
+}
+
+/* Vuetify v-text-field outlined variant */
+.v-field__outline {
+  color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.v-field:not(.v-field--disabled):hover .v-field__outline {
+  color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.v-field.v-field--focused .v-field__outline {
+  color: #7cc576 !important;
+}
