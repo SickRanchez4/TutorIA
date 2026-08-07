@@ -6,15 +6,14 @@ Thumbs.db
 .vscode/
 
 # Dependencias de Node (Frontend)
-vue_frontend/node_modules/
-vue_frontend/dist/ 
-# dist Si Vue.js genera una carpeta 'dist' para producción
+frontend/node_modules/
+frontend/dist/
 
 # Entorno virtual y caché de Python (Backend)
-flask_backend/__pycache__/
-flask_backend/_venv/
-flask_backend/.flaskenv
-flask_backend/*.pyc
+backend/__pycache__/
+backend/_venv/
+backend/.flaskenv
+backend/*.pyc
 __pycache__/
 
 # Archivos de configuración locales (opcional)
@@ -22,3 +21,4 @@ __pycache__/
 .env.local
 .env.example
 /frontend/node_modules
+!.env.docker.example
