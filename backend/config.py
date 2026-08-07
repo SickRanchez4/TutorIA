@@ -51,13 +51,13 @@ class Config:
 
 
 class DevelopmentConfig(Config):
-    """Development"""
+    """Development config with debug mode enabled"""
     DEBUG = True
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL') or Config._build_mssql_uri()
 
 
 class ProductionConfig(Config):
-    """Production"""
+    """Production config with debug mode disabled"""
     DEBUG = False
     SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL') or Config._build_mssql_uri()
 
@@ -65,5 +65,4 @@ class ProductionConfig(Config):
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
-    'default': DevelopmentConfig
 }
