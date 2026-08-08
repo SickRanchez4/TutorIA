@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import os
-from pathlib import Path
 from typing import Iterable
 
 import requests
@@ -12,6 +11,9 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
 from models import Curso, RagIngestionJob, db
+
+
+_in_memory_job_files: dict[str, list[tuple[str, bytes]]] = {}
 
 
 class RagIngestionError(Exception):
@@ -24,13 +26,6 @@ class RagIngestionError(Exception):
 
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _storage_root() -> Path:
-    configured_path = os.getenv('RAG_UPLOAD_STORAGE_PATH', 'storage/rag_uploads')
-    root = Path(configured_path).expanduser().resolve()
-    root.mkdir(parents=True, exist_ok=True)
-    return root
 
 
 def _roles(user) -> set[str]:
@@ -52,8 +47,8 @@ def get_managed_course(user, curso_id: int) -> Curso | None:
 
 def _unique_filename(name: str, used_names: set[str]) -> str:
     sanitized = secure_filename(name) or 'documento.pdf'
-    stem = Path(sanitized).stem or 'documento'
-    suffix = Path(sanitized).suffix.lower() or '.pdf'
+    stem = os.path.splitext(sanitized)[0] or 'documento'
+    suffix = os.path.splitext(sanitized)[1].lower() or '.pdf'
     candidate = f'{stem}{suffix}'
     index = 2
     while candidate.lower() in used_names:
@@ -64,7 +59,7 @@ def _unique_filename(name: str, used_names: set[str]) -> str:
 
 
 def create_ingestion_job(user, curso: Curso, uploaded_files: Iterable[FileStorage]) -> RagIngestionJob:
-    """Persist received PDFs before dispatching them, enabling safe job history and retry."""
+    """Create a queued job and record the file metadata without persisting PDFs on disk."""
     job = RagIngestionJob(
         institucion_id=curso.institucion_id,
         curso_id=curso.id,
@@ -75,10 +70,9 @@ def create_ingestion_job(user, curso: Curso, uploaded_files: Iterable[FileStorag
     db.session.add(job)
     db.session.flush()
 
-    job_directory = _storage_root() / job.id
-    job_directory.mkdir(parents=True, exist_ok=True)
     documents = []
     used_names: set[str] = set()
+    cached_files: list[tuple[str, bytes]] = []
 
     try:
         for uploaded_file in uploaded_files:
@@ -88,44 +82,28 @@ def create_ingestion_job(user, curso: Curso, uploaded_files: Iterable[FileStorag
             content = uploaded_file.read()
             if not content:
                 raise RagIngestionError(f'El archivo "{uploaded_file.filename}" está vacío.', 400)
-            (job_directory / filename).write_bytes(content)
             documents.append({'archivo': filename, 'tamano_bytes': len(content)})
+            cached_files.append((filename, content))
     except Exception:
         db.session.rollback()
-        for path in job_directory.glob('*'):
-            path.unlink(missing_ok=True)
-        job_directory.rmdir()
         raise
 
     if not documents:
         db.session.rollback()
-        job_directory.rmdir()
         raise RagIngestionError('No se proporcionó ningún archivo PDF válido.', 400)
 
     job.documentos_json = json.dumps(documents, ensure_ascii=False)
+    _in_memory_job_files[job.id] = cached_files
     db.session.commit()
     return job
 
 
 def _job_files(job: RagIngestionJob) -> list[tuple[str, tuple[str, bytes, str]]]:
-    job_directory = _storage_root() / job.id
-    payload = []
-    missing_files = []
-    for document in job.documents():
-        filename = document.get('archivo')
-        file_path = job_directory / filename if filename else None
-        if not file_path or not file_path.is_file():
-            missing_files.append(filename or 'desconocido')
-            continue
-        payload.append(('files', (filename, file_path.read_bytes(), 'application/pdf')))
-
-    if missing_files:
-        raise RagIngestionError(
-            'No se puede reintentar porque faltan archivos locales: ' + ', '.join(missing_files),
-            409,
-        )
-    if not payload:
+    """Build an in-memory multipart payload from the cached uploaded bytes."""
+    cached_files = _in_memory_job_files.get(job.id, [])
+    if not cached_files:
         raise RagIngestionError('El trabajo no contiene archivos para procesar.', 409)
+    payload = [('files', (filename, content, 'application/pdf')) for filename, content in cached_files]
     return payload
 
 
@@ -216,17 +194,18 @@ def _call_knowledge_admin_webhook(action: str, payload: dict) -> None:
 
 
 def _remove_local_job_files(job: RagIngestionJob, filenames: set[str] | None = None) -> None:
-    """Remove persisted source PDFs after Pinecone has confirmed their deletion."""
-    job_directory = _storage_root() / job.id
-    if not job_directory.exists():
+    """Clear cached bytes for a job once the UI no longer needs them."""
+    cached_files = _in_memory_job_files.pop(job.id, None)
+    if not cached_files:
         return
     if filenames is None:
-        for path in job_directory.glob('*'):
-            path.unlink(missing_ok=True)
-        job_directory.rmdir()
         return
-    for filename in filenames:
-        (job_directory / filename).unlink(missing_ok=True)
+    remaining = [(filename, content) for filename, content in cached_files if filename not in filenames]
+    if remaining:
+        _in_memory_job_files[job.id] = remaining
+    else:
+        _in_memory_job_files.pop(job.id, None)
+    return
 
 
 def remove_indexed_document(user, curso_id: int, filename: str) -> None:
