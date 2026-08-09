@@ -49,6 +49,31 @@ SET NOCOUNT ON;
 GO
 
 -- -----------------------------------------------------
+-- AI model pricing (USD per million tokens)
+-- Update this row with the provider's current published rate when it changes.
+-- -----------------------------------------------------
+IF NOT EXISTS (
+    SELECT 1
+    FROM [dbo].[precios_modelo_ia]
+    WHERE [proveedor] = 'openai'
+      AND [modelo] = 'gpt-5.4-mini'
+      AND [is_active] = 1
+      AND [vigente_hasta] IS NULL
+)
+BEGIN
+    INSERT INTO [dbo].[precios_modelo_ia] (
+        [proveedor],
+        [modelo],
+        [precio_prompt_por_millon_usd],
+        [precio_completion_por_millon_usd],
+        [vigente_desde],
+        [is_active]
+    )
+    VALUES ('openai', 'gpt-5.4-mini', 0.750000, 4.500000, SYSUTCDATETIME(), 1);
+END
+GO
+
+-- -----------------------------------------------------
 -- 1. Roles
 -- -----------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM [dbo].[roles] WHERE [name] = 'super_admin')
@@ -204,11 +229,11 @@ ELSE
 -- -----------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM [dbo].[configuracion_ia] WHERE [curso_id] = @CursoMateId)
     INSERT INTO [dbo].[configuracion_ia] ([curso_id], [system_prompt], [temperatura], [modos_permitidos], [extender_conocimiento])
-    VALUES (@CursoMateId, 'Eres un tutor de matemáticas para estudiantes universitarios.', 0.3, 'chat,socratico,recursos', 1);
+    VALUES (@CursoMateId, 'Eres un tutor de matemáticas para estudiantes universitarios.', 0.3, 'chat,practicar,recursos', 1);
 
 IF NOT EXISTS (SELECT 1 FROM [dbo].[configuracion_ia] WHERE [curso_id] = @CursoFisicaId)
     INSERT INTO [dbo].[configuracion_ia] ([curso_id], [system_prompt], [temperatura], [modos_permitidos], [extender_conocimiento])
-    VALUES (@CursoFisicaId, 'Eres un asistente de física que explica conceptos claramente.', 0.2, 'chat,socratico', 0);
+    VALUES (@CursoFisicaId, 'Eres un asistente de física que explica conceptos claramente.', 0.2, 'chat,practicar', 0);
 
 -- -----------------------------------------------------
 -- 9. Student enrollments
@@ -384,7 +409,7 @@ INSERT INTO dbo.consumo_tokens
     (id, institucion_id, curso_id, user_id, tipo_operacion, prompt_tokens, completion_tokens, costo_estimado_usd, fecha)
 SELECT
     NEWID(), s.institucion_id, s.curso_id, s.user_id,
-    CASE v.orden % 3 WHEN 1 THEN 'chat_rag' WHEN 2 THEN 'socratico' ELSE 'resumen_sintetico' END,
+    CASE v.orden % 3 WHEN 1 THEN 'chat_rag' WHEN 2 THEN 'practicar' ELSE 'resumen_sintetico' END,
     260 + (s.posicion * 17) + (v.orden * 23),
     110 + (s.posicion * 9) + (v.orden * 15),
     CAST((0.00018 + (s.posicion * 0.000011) + (v.orden * 0.000007)) AS decimal(10, 6)),
@@ -397,7 +422,7 @@ WHERE NOT EXISTS (
     WHERE ct.institucion_id = s.institucion_id
       AND ct.curso_id = s.curso_id
       AND ct.user_id = s.user_id
-      AND ct.tipo_operacion = CASE v.orden % 3 WHEN 1 THEN 'chat_rag' WHEN 2 THEN 'socratico' ELSE 'resumen_sintetico' END
+    AND ct.tipo_operacion = CASE v.orden % 3 WHEN 1 THEN 'chat_rag' WHEN 2 THEN 'practicar' ELSE 'resumen_sintetico' END
       AND ct.fecha = DATEADD(hour, 9 + v.orden, DATEADD(day, -((s.posicion * 2 + v.orden * 5) % 28), CAST(@today AS datetime2)))
 );
 
@@ -406,7 +431,7 @@ INSERT INTO dbo.consumo_tokens
     (id, institucion_id, curso_id, user_id, tipo_operacion, prompt_tokens, completion_tokens, costo_estimado_usd, fecha)
 SELECT
     NEWID(), s.institucion_id, s.curso_id, s.user_id,
-    CASE v.orden WHEN 1 THEN 'chat_rag' ELSE 'socratico' END,
+    CASE v.orden WHEN 1 THEN 'chat_rag' ELSE 'practicar' END,
     230 + (s.posicion * 14) + (v.orden * 18),
     95 + (s.posicion * 8) + (v.orden * 12),
     CAST((0.00015 + (s.posicion * 0.000009) + (v.orden * 0.000006)) AS decimal(10, 6)),
@@ -420,7 +445,7 @@ WHERE s.posicion <= 8
       WHERE ct.institucion_id = s.institucion_id
         AND ct.curso_id = s.curso_id
         AND ct.user_id = s.user_id
-        AND ct.tipo_operacion = CASE v.orden WHEN 1 THEN 'chat_rag' ELSE 'socratico' END
+        AND ct.tipo_operacion = CASE v.orden WHEN 1 THEN 'chat_rag' ELSE 'practicar' END
         AND ct.fecha = DATEADD(hour, 11 + v.orden, DATEADD(day, -(31 + ((s.posicion * 3 + v.orden * 6) % 26)), CAST(@today AS datetime2)))
   );
 
@@ -473,7 +498,7 @@ INSERT INTO dbo.mensajes_chat (id, sesion_chat_id, rol, contenido, citas_context
 SELECT NEWID(), sd.id, v.rol,
        CASE v.rol WHEN N'user' THEN N'Necesito practicar el tema visto esta semana.' ELSE N'Claro. Revisemos el concepto y avancemos con un ejemplo breve.' END,
        CASE WHEN v.rol = N'assistant' AND sd.posicion % 4 <> 0 THEN N'[{"archivo":"guia-del-curso.pdf","pagina":' + CAST((sd.posicion % 6) + 1 AS nvarchar(10)) + N'}]' ELSE NULL END,
-       CASE sd.posicion % 3 WHEN 1 THEN N'consulta' WHEN 2 THEN N'socratico' ELSE N'recurso_sintetico' END,
+    CASE sd.posicion % 3 WHEN 1 THEN N'consulta' WHEN 2 THEN N'practicar' ELSE N'recurso_sintetico' END,
        DATEADD(hour, v.hora, DATEADD(day, -sd.posicion, CAST(@today AS datetime2)))
 FROM sesiones_demo sd
 CROSS JOIN (VALUES (N'user', 14), (N'assistant', 15)) v(rol, hora)
