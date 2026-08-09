@@ -7,7 +7,8 @@ import router from '@/router'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-  timeout: 10000,
+  // The backend can wait up to 60 seconds for an n8n AI response.
+  timeout: 70000,
   headers: {
     'Content-Type': 'application/json'
   }

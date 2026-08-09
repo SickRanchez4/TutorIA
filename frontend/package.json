@@ -18,6 +18,7 @@
     "@fullcalendar/vue3": "^6.1.20",
     "@mdi/font": "^7.4.47",
     "axios": "^1.13.2",
+    "mermaid": "^11.16.1",
     "pinia": "^2.1.7",
     "vue": "^3.4.37",
     "vue-router": "^4.2.5",

@@ -37,9 +37,9 @@ export const estudianteService = {
     return api.post(`/estudiante/chat/sesiones/${sesionId}/recurso-sintetico`, payload)
   },
 
-  // Modo socrático
-  socratico(sesionId, payload) {
-    return api.post(`/estudiante/chat/sesiones/${sesionId}/socratico`, payload)
+  // Modo práctica
+  practicar(sesionId, payload) {
+    return api.post(`/estudiante/chat/sesiones/${sesionId}/practicar`, payload)
   },
 
   // Agenda

@@ -1,10 +1,10 @@
 <template>
   <v-app class="d-flex flex-column" style="height: 100vh;">
-    <v-app-bar color="surface" elevation="0" class="border-b" height="80">
+    <v-app-bar color="surface" elevation="0" :class="['border-b', { 'student-app-bar--chat': tab === 'chat' }]" :height="tab === 'chat' ? 58 : 80">
       <v-app-bar-title class="d-flex align-center py-2">
         <div>
           <div class="text-subtitle-1 font-weight-bold">Panel Estudiante</div>
-          <div class="text-caption text-medium-emphasis">Chat académico, agenda y recursos</div>
+          <div v-show="tab !== 'chat'" class="text-caption text-medium-emphasis">Chat académico, agenda y recursos</div>
         </div>
       </v-app-bar-title>
 
@@ -18,7 +18,7 @@
       </v-btn>
 
       <template #extension>
-        <v-tabs v-model="tab" color="primary" align-tabs="start">
+        <v-tabs v-model="tab" color="primary" align-tabs="start" density="compact" class="student-main-tabs">
           <v-tab value="chat" prepend-icon="mdi-forum-outline">Asistente</v-tab>
           <v-tab value="agenda" prepend-icon="mdi-calendar-month-outline">Agenda</v-tab>
           <v-tab value="perfil" prepend-icon="mdi-account-circle">Perfil</v-tab>
@@ -35,14 +35,14 @@
       {{ toast }}
     </v-snackbar>
 
-    <v-main class="fade-in flex-grow-1 overflow-auto">
-      <v-container fluid :class="['py-6 px-6', { 'student-chat-container': tab === 'chat' }]" style="max-width: 1400px;">
+    <v-main :class="['fade-in flex-grow-1', tab === 'chat' ? 'student-chat-main' : 'overflow-auto']">
+      <v-container fluid :class="[tab === 'chat' ? 'py-2 px-3 student-chat-container' : 'py-6 px-6']" style="max-width: 1400px;">
         <!-- CHAT -->
-        <v-row v-show="tab === 'chat'" class="student-chat-view">
+        <v-row v-show="tab === 'chat'" class="student-chat-view" dense>
           <!-- Sesiones -->
-          <v-col cols="12" lg="4">
-            <v-card class="student-chat-create pa-5 mb-4" rounded="xl">
-              <div class="d-flex align-start justify-space-between mb-4">
+          <v-col cols="12" lg="3">
+            <v-card class="student-chat-create pa-4 mb-2" rounded="xl">
+              <div class="d-flex align-start justify-space-between mb-3">
                 <div>
                   <p class="student-chat-eyebrow mb-1">ESPACIO DE ESTUDIO</p>
                   <h3 class="text-h6 font-weight-black mb-1">Elige una materia</h3>
@@ -69,7 +69,7 @@
               </v-alert>
             </v-card>
 
-            <v-card class="student-chat-sessions pa-3 mb-4" rounded="xl">
+            <v-card class="student-chat-sessions pa-2 mb-2" rounded="xl">
               <div class="d-flex align-center justify-space-between px-2 pt-2 pb-3">
                 <div>
                   <p class="text-subtitle-2 font-weight-black mb-0">Tus conversaciones</p>
@@ -119,7 +119,7 @@
           </v-col>
 
           <!-- Conversación -->
-          <v-col cols="12" lg="8" class="d-flex flex-column">
+          <v-col cols="12" lg="9" class="d-flex flex-column">
             <v-card class="student-chat-panel d-flex flex-column overflow-hidden flex-grow-1" rounded="xl">
               <div v-if="!activeSesion" class="student-chat-welcome flex-grow-1 d-flex align-center justify-center">
                 <div class="text-center px-5">
@@ -134,17 +134,18 @@
                 </div>
               </div>
               <template v-else>
-                <div class="student-chat-header px-4 px-md-5 py-4">
-                  <div class="d-flex align-center justify-space-between ga-3">
-                    <div class="d-flex align-center ga-3 min-w-0">
+                <div class="student-chat-header px-3 px-md-4 py-1">
+                  <div class="d-flex align-center justify-space-between ga-2">
+                    <div class="d-flex align-center ga-2 min-w-0">
                       <div class="student-chat-course-icon"><v-icon icon="mdi-book-education-outline" size="21"></v-icon></div>
                       <div class="min-w-0">
                         <p class="text-body-1 font-weight-black mb-0 text-truncate">{{ activeSesion.titulo }}</p>
+                        <p class="text-caption text-medium-emphasis mb-0 text-truncate">{{ activeCourseLabel }}</p>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div ref="messagesBox" class="student-chat-messages flex-grow-1 overflow-y-auto pa-4 pa-md-5">
+                <div ref="messagesBox" class="student-chat-messages flex-grow-1 overflow-y-auto pa-3 pa-md-4">
                   <div v-if="loadingSesion" class="fill-height d-flex flex-column align-center justify-center ga-3 text-medium-emphasis" style="min-height: 260px;">
                     <v-progress-circular indeterminate color="primary" size="40" width="4"></v-progress-circular>
                     <p class="text-caption mb-0">Cargando conversación...</p>
@@ -161,8 +162,17 @@
                       </span>
                       <div class="d-flex align-end ga-2" :class="m.rol === 'user' ? 'flex-row-reverse' : ''">
                         <div v-if="m.rol !== 'user'" class="student-assistant-avatar"><v-icon icon="mdi-brain" size="15"></v-icon></div>
-                        <div :class="['chat-bubble text-body-2', m.rol === 'user' ? 'chat-bubble--user' : 'chat-bubble--assistant']">
-                          {{ m.contenido }}
+                        <div :class="['chat-bubble text-body-2', m.rol === 'user' ? 'chat-bubble--user' : 'chat-bubble--assistant', m.tipo_interaccion === 'recurso_sintetico' ? 'chat-bubble--resource' : '']">
+                          <MermaidMessage
+                            v-if="m.rol === 'assistant' && m.tipo_interaccion === 'recurso_sintetico'"
+                            :content="m.contenido"
+                          />
+                          <template v-else>{{ m.contenido }}</template>
+                          <div v-if="m.rol === 'user' && m.image_name" class="chat-image-resource" :title="`Imagen: ${m.image_name}`">
+                            <v-icon icon="mdi-image-outline" size="16"></v-icon>
+                            <span class="chat-image-resource__label">Imagen:</span>
+                            <span class="chat-image-resource__name text-truncate">{{ m.image_name }}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -173,8 +183,8 @@
                     </div>
                   </template>
                 </div>
-                <div class="student-chat-composer pa-3 pa-md-4">
-                  <div class="student-chat-mode-bar d-flex flex-wrap align-center ga-2 mb-3">
+                <div class="student-chat-composer pa-2 pa-md-3">
+                  <div class="student-chat-mode-bar d-flex flex-wrap align-center ga-2 mb-2">
                     <span class="student-chat-mode-label">Elige tu enfoque</span>
                     <v-btn
                       v-for="opt in chatModes"
@@ -190,9 +200,16 @@
                     </v-btn>
                   </div>
                   <div class="student-chat-input-wrap">
+                    <input
+                      ref="imageInput"
+                      class="student-chat-image-input"
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      @change="selectImage"
+                    />
                     <v-textarea
                       v-model="inputMsg"
-                      rows="2"
+                      rows="1"
                       auto-grow
                       placeholder="Escribe lo que quieres aprender..."
                       density="comfortable"
@@ -203,11 +220,40 @@
                       :disabled="loadingSesion"
                       @keydown.enter.exact.prevent="sendByMode"
                     />
-                    <v-btn color="primary" class="student-chat-send" :loading="sending" :disabled="!selectedMode || loadingSesion" @click="sendByMode">
+                    <v-btn
+                      :color="isRecording ? 'error' : 'default'"
+                      :class="['student-chat-microphone', { 'student-chat-microphone--recording': isRecording }]"
+                      :disabled="sending || loadingSesion || !speechRecognitionSupported"
+                      :aria-label="isRecording ? 'Detener grabación' : 'Grabar mensaje de voz'"
+                      @click="toggleVoiceInput"
+                    >
+                      <v-icon :icon="isRecording ? 'mdi-stop' : 'mdi-microphone-outline'" size="20"></v-icon>
+                      <v-tooltip activator="parent" location="top">
+                        {{ speechRecognitionSupported ? (isRecording ? 'Detener y revisar texto' : 'Grabar mensaje de voz') : 'El navegador no admite dictado por voz' }}
+                      </v-tooltip>
+                    </v-btn>
+                    <v-btn
+                      class="student-chat-image-button"
+                      :disabled="sending || loadingSesion"
+                      aria-label="Adjuntar imagen"
+                      @click="imageInput?.click()"
+                    >
+                      <v-icon icon="mdi-image-outline" size="20"></v-icon>
+                      <v-tooltip activator="parent" location="top">Adjuntar imagen</v-tooltip>
+                    </v-btn>
+                    <v-btn color="primary" class="student-chat-send" :loading="sending" :disabled="!selectedMode || loadingSesion || isRecording" @click="sendByMode">
                       <v-icon icon="mdi-send" size="20"></v-icon>
                       <v-tooltip activator="parent" location="top">Enviar mensaje</v-tooltip>
                     </v-btn>
                   </div>
+                  <div v-if="imageAttachment" class="student-chat-image-preview mt-2">
+                    <img :src="imageAttachment.data_url" alt="Vista previa de imagen adjunta" />
+                    <span class="text-truncate">{{ imageAttachment.name }}</span>
+                    <v-btn icon="mdi-close" size="x-small" variant="text" aria-label="Quitar imagen" @click="clearImage" />
+                  </div>
+                  <p v-if="isRecording" class="student-chat-recording-status mb-0 mt-1" role="status">
+                    <span></span> Escuchando… pulsa detener para revisar antes de enviar.
+                  </p>
                 </div>
               </template>
             </v-card>
@@ -295,11 +341,12 @@
 </template>
 
 <script setup>
-import { onMounted, ref, nextTick, computed } from 'vue'
+import { onBeforeUnmount, onMounted, ref, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { estudianteService } from '../services'
 import { useAuthStore } from '../stores/auth'
 import ProfileSection from '../components/ProfileSection.vue'
+import MermaidMessage from '../components/MermaidMessage.vue'
 
 const authStore = useAuthStore()
 const router = useRouter()
@@ -337,6 +384,11 @@ async function loadBase() {
   finally { loadingBase.value = false }
 }
 onMounted(loadBase)
+onMounted(initializeSpeechRecognition)
+onBeforeUnmount(() => {
+  if (speechRecognition && isRecording.value) speechRecognition.abort()
+  speechRecognition = null
+})
 
 /* ---------- CU-08: Chat ---------- */
 const activeSesion = ref(null)
@@ -350,14 +402,118 @@ const sessionContext = ref(null)
 const selectedMode = ref(null)
 const renamingSesionId = ref(null)
 const renamingTitle = ref('')
+const imageInput = ref(null)
+const imageAttachment = ref(null)
+const isRecording = ref(false)
+const speechRecognitionSupported = ref(false)
+let speechRecognition = null
+let voiceInputBase = ''
+
+function initializeSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+  speechRecognitionSupported.value = Boolean(SpeechRecognition)
+  if (!SpeechRecognition) return
+
+  speechRecognition = new SpeechRecognition()
+  speechRecognition.lang = 'es-ES'
+  speechRecognition.continuous = true
+  speechRecognition.interimResults = true
+
+  speechRecognition.onresult = (event) => {
+    let finalTranscript = ''
+    let interimTranscript = ''
+    for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      const transcript = event.results[index][0]?.transcript || ''
+      if (event.results[index].isFinal) finalTranscript += transcript
+      else interimTranscript += transcript
+    }
+
+    if (finalTranscript.trim()) {
+      voiceInputBase = [voiceInputBase, finalTranscript.trim()].filter(Boolean).join(' ')
+    }
+    inputMsg.value = [voiceInputBase, interimTranscript.trim()].filter(Boolean).join(' ')
+  }
+
+  speechRecognition.onerror = (event) => {
+    isRecording.value = false
+    if (event.error === 'aborted' || event.error === 'no-speech') return
+    const message = event.error === 'not-allowed'
+      ? 'Permite el acceso al micrófono para enviar mensajes por voz.'
+      : 'No se pudo reconocer el audio. Inténtalo nuevamente.'
+    notify(message, true)
+  }
+
+  speechRecognition.onend = () => {
+    isRecording.value = false
+  }
+}
+
+function toggleVoiceInput() {
+  if (!speechRecognition) return notify('El navegador no admite dictado por voz.', true)
+  if (isRecording.value) {
+    speechRecognition.stop()
+    return
+  }
+
+  voiceInputBase = inputMsg.value.trim()
+  try {
+    speechRecognition.start()
+    isRecording.value = true
+  } catch (error) {
+    console.error('No se pudo iniciar el reconocimiento de voz.', error)
+    notify('No se pudo iniciar el micrófono.', true)
+  }
+}
+
+function clearImage() {
+  imageAttachment.value = null
+  if (imageInput.value) imageInput.value.value = ''
+}
+
+function selectImage(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  const allowedTypes = ['image/png', 'image/jpeg']
+  const maxBytes = 4 * 1024 * 1024
+  if (!allowedTypes.includes(file.type) || file.size > maxBytes) {
+    clearImage()
+    return notify('Adjunta una imagen PNG o JPG de hasta 4 MB.', true)
+  }
+
+  const reader = new FileReader()
+  reader.onload = () => {
+    imageAttachment.value = {
+      name: file.name,
+      mime_type: file.type,
+      data_url: reader.result,
+    }
+  }
+  reader.onerror = () => notify('No se pudo leer la imagen adjunta.', true)
+  reader.readAsDataURL(file)
+}
+
+function imagePayload() {
+  return imageAttachment.value
+    ? { data_url: imageAttachment.value.data_url, mime_type: imageAttachment.value.mime_type, name: imageAttachment.value.name }
+    : null
+}
 
 const chatModes = [
   { value: 'consulta', label: 'Chat' },
-  { value: 'socratico', label: 'Socrático' },
+  { value: 'practicar', label: 'Práctica' },
   { value: 'recurso_sintetico', label: 'Recurso sintético' },
 ]
 
 const grupoLabel = (g) => `${g.nombre || 'Materia'} ${g.codigo ? '(' + g.codigo + ')' : ''}`
+const activeCourseLabel = computed(() => {
+  if (sessionContext.value?.materia_nombre) {
+    const code = sessionContext.value.codigo_curso
+    return code ? `${sessionContext.value.materia_nombre} · ${code}` : sessionContext.value.materia_nombre
+  }
+  const course = grupos.value.find((item) => item.id === activeSesion.value?.curso_id)
+  return course ? grupoLabel(course) : 'Curso de la conversación'
+})
+
 const isModeEnabled = (mode) => {
   if (!sessionContext.value || !Array.isArray(sessionContext.value.modos_permitidos)) return true
   const enabled = sessionContext.value.modos_permitidos
@@ -368,7 +524,7 @@ const isModeEnabled = (mode) => {
 
 const MODE_META = {
   consulta: { label: 'Chat', icon: 'mdi-chat-outline' },
-  socratico: { label: 'Socrático', icon: 'mdi-head-question-outline' },
+  practicar: { label: 'Práctica', icon: 'mdi-head-question-outline' },
   recurso_sintetico: { label: 'Recurso', icon: 'mdi-file-document-outline' },
 }
 const modeMeta = (tipo) => MODE_META[tipo] || { label: tipo, icon: 'mdi-chat-outline' }
@@ -447,54 +603,59 @@ async function openSesion(sesion) {
     mensajes.value = r.mensajes || []
     sessionContext.value = ctx.contexto || null
     selectedMode.value = pickDefaultMode()
-    await scrollBottom()
   } catch (e) { err(e, 'No se pudieron cargar los mensajes') }
   finally { loadingSesion.value = false }
+  await nextTick()
+  await scrollBottom()
 }
 
 async function sendByMode() {
   if (!selectedMode.value) return notify('Selecciona un modo de chat', true)
   if (!isModeEnabled(selectedMode.value)) return notify('Este modo está deshabilitado por tu coordinador', true)
-  if (selectedMode.value === 'socratico') return sendSocratico()
+  if (selectedMode.value === 'practicar') return sendPracticar()
   if (selectedMode.value === 'recurso_sintetico') return generarRecurso()
   return sendMessage()
 }
 
 async function sendMessage() {
-  if (!activeSesion.value || !inputMsg.value.trim()) return
-  const contenido = inputMsg.value.trim()
+  if (!activeSesion.value || (!inputMsg.value.trim() && !imageAttachment.value)) return
+  const contenido = inputMsg.value.trim() || 'Analiza la imagen adjunta.'
+  const image = imagePayload()
   const tempId = 'tmp-' + Date.now()
-  mensajes.value.push({ id: tempId, rol: 'user', contenido, tipo_interaccion: 'consulta' })
+  mensajes.value.push({ id: tempId, rol: 'user', contenido, tipo_interaccion: 'consulta', image_name: image?.name || null })
   inputMsg.value = ''
+  clearImage()
   sending.value = true
   await scrollBottom()
   try {
-    const r = await estudianteService.sendMensaje(activeSesion.value.id, { contenido })
+    const r = await estudianteService.sendMensaje(activeSesion.value.id, { contenido, image })
     const idx = mensajes.value.findIndex((x) => x.id === tempId)
-    if (idx >= 0 && r.mensaje_usuario) mensajes.value[idx] = r.mensaje_usuario
+    if (idx >= 0 && r.mensaje_usuario) mensajes.value[idx] = { ...r.mensaje_usuario, image_name: image?.name || null }
     if (r.mensaje_asistente) mensajes.value.push(r.mensaje_asistente)
     await scrollBottom()
   } catch (e) { err(e, 'Error al enviar mensaje') }
   finally { sending.value = false }
 }
 
-/* ---------- CU-11: Modo socrático ---------- */
-async function sendSocratico() {
-  if (!isModeEnabled('socratico')) return notify('Modo socrático deshabilitado por tu coordinador', true)
-  if (!activeSesion.value || !inputMsg.value.trim()) return
-  const contenido = inputMsg.value.trim()
+/* ---------- CU-11: Modo práctica ---------- */
+async function sendPracticar() {
+  if (!isModeEnabled('practicar')) return notify('Modo práctica deshabilitado por tu coordinador', true)
+  if (!activeSesion.value || (!inputMsg.value.trim() && !imageAttachment.value)) return
+  const contenido = inputMsg.value.trim() || 'Ayúdame a resolver el ejercicio de la imagen adjunta.'
+  const image = imagePayload()
   const tempId = 'tmp-' + Date.now()
-  mensajes.value.push({ id: tempId, rol: 'user', contenido, tipo_interaccion: 'socratico' })
+  mensajes.value.push({ id: tempId, rol: 'user', contenido, tipo_interaccion: 'practicar', image_name: image?.name || null })
   inputMsg.value = ''
+  clearImage()
   sending.value = true
   await scrollBottom()
   try {
-    const r = await estudianteService.socratico(activeSesion.value.id, { ejercicio: contenido, contenido })
+    const r = await estudianteService.practicar(activeSesion.value.id, { ejercicio: contenido, contenido, image })
     const idx = mensajes.value.findIndex((x) => x.id === tempId)
-    if (idx >= 0 && r.mensaje_usuario) mensajes.value[idx] = r.mensaje_usuario
+    if (idx >= 0 && r.mensaje_usuario) mensajes.value[idx] = { ...r.mensaje_usuario, image_name: image?.name || null }
     if (r.mensaje_asistente) mensajes.value.push(r.mensaje_asistente)
     await scrollBottom()
-  } catch (e) { err(e, 'Modo socrático no disponible') }
+  } catch (e) { err(e, 'Modo práctica no disponible') }
   finally { sending.value = false }
 }
 
@@ -502,13 +663,18 @@ async function sendSocratico() {
 async function generarRecurso() {
   if (!isModeEnabled('recurso_sintetico')) return notify('Recurso sintético deshabilitado por tu coordinador', true)
   if (!activeSesion.value) return notify('Abre una sesión primero', true)
-  const contenido = inputMsg.value.trim() || 'Generar recurso sintético'
-  if (contenido) mensajes.value.push({ id: 'tmp-' + Date.now(), rol: 'user', contenido, tipo_interaccion: 'recurso_sintetico' })
+  const image = imagePayload()
+  const contenido = inputMsg.value.trim() || (image ? 'Genera un recurso a partir de la imagen adjunta.' : 'Generar recurso sintético')
+  const tempId = 'tmp-' + Date.now()
+  mensajes.value.push({ id: tempId, rol: 'user', contenido, tipo_interaccion: 'recurso_sintetico', image_name: image?.name || null })
   inputMsg.value = ''
+  clearImage()
   sending.value = true
   await scrollBottom()
   try {
-    const r = await estudianteService.recursoSintetico(activeSesion.value.id, { contenido })
+    const r = await estudianteService.recursoSintetico(activeSesion.value.id, { contenido, image })
+    const idx = mensajes.value.findIndex((x) => x.id === tempId)
+    if (idx >= 0 && r.mensaje_usuario) mensajes.value[idx] = { ...r.mensaje_usuario, image_name: image?.name || null }
     if (r.mensaje_asistente) mensajes.value.push(r.mensaje_asistente)
     else if (r.recurso) mensajes.value.push(r.recurso)
     await scrollBottom()
@@ -647,7 +813,33 @@ onMounted(() => {
 }
 
 .student-chat-container {
+  height: 100%;
   max-width: none !important;
+  overflow: hidden;
+}
+
+.student-chat-main {
+  min-height: 0;
+  overflow: hidden !important;
+}
+
+.student-chat-view {
+  height: 100%;
+  margin-bottom: 0;
+}
+
+.student-chat-view > :deep(.v-col) {
+  min-height: 0;
+}
+
+.student-app-bar--chat :deep(.v-toolbar__content) {
+  min-height: 58px !important;
+}
+
+.student-main-tabs :deep(.v-tab) {
+  min-height: 38px;
+  padding-inline: 14px;
+  font-size: 0.8rem;
 }
 
 .student-chat-create,
@@ -704,7 +896,7 @@ onMounted(() => {
 }
 
 .student-chat-sessions {
-  max-height: 510px;
+  max-height: calc(100vh - 238px);
   overflow: auto;
 }
 
@@ -748,7 +940,7 @@ onMounted(() => {
 }
 
 .student-chat-panel {
-  height: calc(100vh - 176px);
+  height: 100%;
   min-height: 0;
 }
 
@@ -825,11 +1017,19 @@ onMounted(() => {
   background: linear-gradient(90deg, rgba(124, 197, 118, 0.1), rgba(124, 197, 118, 0.015));
 }
 
+.student-chat-header .text-body-1 {
+  line-height: 1.15;
+}
+
+.student-chat-header .text-caption {
+  line-height: 1.05;
+}
+
 .student-chat-course-icon {
   display: grid;
   flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   place-items: center;
   border: 1px solid rgba(124, 197, 118, 0.28);
   border-radius: 13px;
@@ -879,7 +1079,7 @@ onMounted(() => {
 }
 
 .chat-bubble {
-  max-width: min(82%, 620px);
+  max-width: min(86%, 760px);
   border-radius: 18px;
   padding: 11px 15px;
   white-space: pre-wrap;
@@ -907,11 +1107,51 @@ onMounted(() => {
   border-bottom-right-radius: 4px;
 }
 
+.chat-image-resource {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin-top: 9px;
+  padding: 6px 8px;
+  border: 1px solid rgba(16, 32, 15, 0.2);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.24);
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.chat-image-resource__label {
+  flex: 0 0 auto;
+  font-weight: 800;
+}
+
+.chat-image-resource__name {
+  min-width: 0;
+  font-weight: 600;
+}
+
 .chat-bubble--assistant {
   background: rgba(255, 255, 255, 0.075);
   color: rgb(var(--v-theme-on-surface));
   border: 1px solid rgba(124, 197, 118, 0.16);
   border-bottom-left-radius: 4px;
+}
+
+.chat-bubble--resource {
+  width: min(100%, 1180px);
+  min-width: 50%;
+  max-width: calc(100% - 36px);
+  padding: 8px 10px;
+}
+
+.chat-bubble--resource :deep(.mermaid-message__diagram) {
+  margin: 8px 0;
+}
+
+.chat-bubble--resource :deep(.mermaid-message__preview) {
+  min-height: 220px;
+  padding: 18px 20px;
 }
 
 .student-chat-thinking {
@@ -958,9 +1198,9 @@ onMounted(() => {
 .student-chat-input-wrap { position: relative; }
 
 .student-chat-input :deep(.v-field) {
-  padding-right: 58px;
+  padding-right: 148px;
   border: 1px solid rgba(124, 197, 118, 0.2);
-  border-radius: 16px;
+  border-radius: 13px;
   background: rgba(17, 21, 25, 0.28);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
@@ -971,11 +1211,91 @@ onMounted(() => {
   position: absolute;
   right: 10px;
   bottom: 10px;
-  width: 38px;
-  height: 38px;
+  z-index: 2;
+  min-width: 30px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   color: #fff !important;
   background: linear-gradient(135deg, #7cc576, #5d9e58) !important;
   box-shadow: 0 0 17px rgba(124, 197, 118, 0.27);
+}
+
+.student-chat-microphone {
+  position: absolute;
+  right: 50px;
+  bottom: 8px;
+  z-index: 2;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid rgba(124, 197, 118, 0.22);
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+.student-chat-image-input {
+  display: none;
+}
+
+.student-chat-image-button {
+  position: absolute;
+  right: 90px;
+  bottom: 8px;
+  z-index: 2;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(124, 197, 118, 0.22);
+  color: var(--chat-green-bright);
+  background: rgba(255, 255, 255, 0.07) !important;
+}
+
+.student-chat-image-preview {
+  display: flex;
+  max-width: 340px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border: 1px solid rgba(124, 197, 118, 0.24);
+  border-radius: 10px;
+  background: rgba(124, 197, 118, 0.08);
+  color: rgba(235, 242, 235, 0.84);
+  font-size: 0.72rem;
+}
+
+.student-chat-image-preview img {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.student-chat-image-preview span {
+  flex: 1;
+}
+
+.student-chat-microphone--recording {
+  color: #fff !important;
+  background: rgb(var(--v-theme-error)) !important;
+  animation: chat-recording-pulse 1.25s ease-in-out infinite;
+}
+
+.student-chat-recording-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgb(var(--v-theme-error));
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.student-chat-recording-status span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .student-chat-composer-note {
@@ -995,7 +1315,14 @@ onMounted(() => {
   50% { opacity: 0.35; transform: translateY(-3px); }
 }
 
+@keyframes chat-recording-pulse {
+  50% { box-shadow: 0 0 0 6px rgba(var(--v-theme-error), 0.16); }
+}
+
 @media (max-width: 1279px) {
+  .student-chat-container,
+  .student-chat-view { height: auto; overflow: visible; }
+  .student-chat-main { overflow: auto !important; }
   .student-chat-panel { height: auto; min-height: 580px; }
   .student-chat-sessions { max-height: none; }
 }
@@ -1008,6 +1335,8 @@ onMounted(() => {
   .student-chat-online-chip { display: none; }
   .student-chat-mode-label { width: 100%; }
   .chat-bubble { max-width: calc(100vw - 108px); }
+  .chat-bubble--resource { min-width: 0; max-width: calc(100vw - 42px); }
+  .student-main-tabs :deep(.v-tab) { padding-inline: 9px; }
   .student-chat-composer-note { line-height: 1.4; }
 }
 

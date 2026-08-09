@@ -4,6 +4,8 @@ Student routes
 import os
 import json
 import logging
+import base64
+import re
 from datetime import datetime, timezone
 
 import requests as http_requests
@@ -13,7 +15,9 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from models import db, EstudianteCurso, Curso, ConsumoTokens
 from models.ia_chat import SesionChat, MensajeChat, ConfiguracionIA
 from models.agenda_notificaciones import ActividadAgenda
+from services.model_pricing import DEFAULT_MODEL, DEFAULT_PROVIDER, calculate_cost_usd, get_active_model_price
 from services.subscription_quota import request_is_allowed
+from services.token_counting import count_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,8 @@ CHAT_SERVICE_UNAVAILABLE_MESSAGE = (
 # It is included in the n8n payload so its model invocation can honor the same cap.
 MAX_COMPLETION_TOKENS = 1024
 MIN_REQUEST_RESERVATION_TOKENS = 1152
+MAX_CHAT_IMAGE_BYTES = 4 * 1024 * 1024
+ALLOWED_CHAT_IMAGE_TYPES = {'image/png', 'image/jpeg', 'image/webp', 'image/gif'}
 
 
 # ============================================================================
@@ -44,7 +50,7 @@ def _is_enrolled(user_id, curso_id):
 
 
 def _modo_habilitado(curso_id, modo):
-    """Return True if the given chat mode ('chat', 'socratico', 'recursos') is enabled for the course."""
+    """Return True if the given chat mode ('chat', 'practicar', 'recursos') is enabled for the course."""
     config = ConfiguracionIA.query.get(curso_id)
     if not config:
         return True
@@ -59,16 +65,18 @@ def _get_session_for_user(sesion_id, user_id):
     ).first()
 
 
-def _build_n8n_chat_payload(sesion, message, requested_mode, student_id, max_tokens):
+def _build_n8n_chat_payload(sesion, message, requested_mode, student_id, max_tokens, image=None):
     """Build the exact payload contract expected by the n8n student-chat webhook."""
     curso = Curso.query.get(sesion.curso_id)
     config = ConfiguracionIA.query.get(sesion.curso_id)
 
-    return {
+    payload = {
         'institucion_id': str(curso.institucion_id) if curso else None,
         'curso_id': sesion.curso_id,
         'curso_nombre': curso.nombre if curso else None,
-        'pinecone_namespace': f'curso_{sesion.curso_id}',
+        # Debe coincidir con upload-to-pinecone.json para preservar el
+        # aislamiento de vectores por institución y curso.
+        'pinecone_namespace': f'inst_{curso.institucion_id}_curso_{sesion.curso_id}' if curso else None,
         'chatbot_prompt': config.system_prompt if config else '',
         'chatbot_temperature': float(config.temperatura) if config else 0.2,
         'extend_knowledge': bool(config.extender_conocimiento) if config else False,
@@ -78,34 +86,80 @@ def _build_n8n_chat_payload(sesion, message, requested_mode, student_id, max_tok
         'message': message,
         'max_tokens': max_tokens,
     }
+    if image:
+        payload['image'] = image
+    return payload
+
+
+def _validated_chat_image(data):
+    """Validate an optional browser data URL without storing the image on the server."""
+    image = data.get('image')
+    if image is None:
+        return None
+    if not isinstance(image, dict):
+        raise ValueError('La imagen adjunta no tiene un formato válido.')
+
+    mime_type = str(image.get('mime_type') or '').lower()
+    data_url = str(image.get('data_url') or '')
+    if mime_type not in ALLOWED_CHAT_IMAGE_TYPES:
+        raise ValueError('Solo se admiten imágenes PNG, JPG, WEBP o GIF.')
+    match = re.fullmatch(r'data:([^;,]+);base64,([A-Za-z0-9+/=]+)', data_url)
+    if not match or match.group(1).lower() != mime_type:
+        raise ValueError('La imagen adjunta no tiene un formato válido.')
+    try:
+        image_bytes = base64.b64decode(match.group(2), validate=True)
+    except (ValueError, base64.binascii.Error):
+        raise ValueError('La imagen adjunta no tiene un formato válido.')
+    if not image_bytes or len(image_bytes) > MAX_CHAT_IMAGE_BYTES:
+        raise ValueError('La imagen no puede superar los 4 MB.')
+
+    return {
+        'mime_type': mime_type,
+        'data_url': data_url,
+        'name': str(image.get('name') or 'imagen').strip()[:255],
+    }
 
 
 def _parse_n8n_chat_response(data):
-    """Normalize different n8n response shapes into text, citations and token usage."""
+    """Normalize n8n response shapes into text, citations, usage and applied mode."""
     if isinstance(data, list):
         data = data[0] if data else {}
 
     if isinstance(data, str):
-        return data, None, None
+        return data, None, None, None
 
     if not isinstance(data, dict):
-        return str(data), None, None
+        return str(data), None, None, None
 
     nested = data.get('data', {})
     if not isinstance(nested, dict):
         nested = {}
-    text = (
-        data.get('respuesta')
-        or data.get('response')
-        or data.get('answer')
-        or data.get('output')
-        or data.get('message')
-        or nested.get('respuesta')
-        or nested.get('response')
-        or nested.get('answer')
-        or nested.get('output')
-        or nested.get('message')
-    )
+    resource = data.get('resource') or nested.get('resource')
+    if not isinstance(resource, dict):
+        resource = {}
+
+    resource_title = str(resource.get('title') or '').strip()
+    resource_graphic = str(resource.get('graphic') or '').strip()
+    if resource_graphic:
+        # MermaidMessage.vue detects this fenced block and renders the diagram.
+        # Keep the title as regular message text above the diagram.
+        text = '\n\n'.join(part for part in (
+            resource_title,
+            f'```mermaid\n{resource_graphic}\n```',
+        ) if part)
+    else:
+        text = (
+            data.get('respuesta')
+            or data.get('response')
+            or data.get('answer')
+            or data.get('output')
+            or data.get('message')
+            or nested.get('respuesta')
+            or nested.get('response')
+            or nested.get('answer')
+            or nested.get('output')
+            or nested.get('message')
+        )
     citas = (
         data.get('citas')
         or data.get('citations')
@@ -129,13 +183,14 @@ def _parse_n8n_chat_response(data):
         usage = None
     if usage and not (usage['prompt_tokens'] or usage['completion_tokens']):
         usage = None
-    return text or str(data), citas_json, usage
+    modo_aplicado = data.get('modo_aplicado') or nested.get('modo_aplicado')
+    return text or str(data), citas_json, usage, modo_aplicado
 
 
 def _call_n8n_chat(payload):
     """
     Call the n8n chat webhook.
-    Returns (response_text, citas_json_str, usage_dict_or_none).
+    Returns (response_text, citas_json_str, usage_dict_or_none, applied_mode_or_none).
     """
     if not N8N_CHAT_WEBHOOK_URL:
         raise RuntimeError('N8N_CHAT_WEBHOOK_URL no está configurado en el backend')
@@ -147,8 +202,7 @@ def _call_n8n_chat(payload):
 
 def _token_reservation(message):
     """Bound one request before calling the external model service."""
-    estimated_prompt_tokens = max((len(message or '') + 3) // 4, 1)
-    return max(MIN_REQUEST_RESERVATION_TOKENS, estimated_prompt_tokens + MAX_COMPLETION_TOKENS)
+    return max(MIN_REQUEST_RESERVATION_TOKENS, count_tokens(message) + MAX_COMPLETION_TOKENS)
 
 
 def _quota_error(curso, reservation_tokens):
@@ -161,13 +215,16 @@ def _quota_error(curso, reservation_tokens):
     return (jsonify({'message': message, 'code': 'token_quota_exceeded', 'suscripcion': summary}), 429), summary
 
 
-def _record_consumption(curso, user_id, tipo_operacion, reservation_tokens, usage):
-    """Audit actual provider usage, or the conservative reservation if usage is unavailable."""
+def _record_consumption(curso, user_id, tipo_operacion, message, response, usage):
+    """Record provider usage, falling back to tiktoken counts of the exchanged text."""
     prompt_tokens = int((usage or {}).get('prompt_tokens') or 0)
     completion_tokens = int((usage or {}).get('completion_tokens') or 0)
     if prompt_tokens + completion_tokens <= 0:
-        prompt_tokens = reservation_tokens - MAX_COMPLETION_TOKENS
-        completion_tokens = MAX_COMPLETION_TOKENS
+        prompt_tokens = count_tokens(message)
+        completion_tokens = count_tokens(response)
+
+    price = get_active_model_price(DEFAULT_PROVIDER, DEFAULT_MODEL)
+    cost = calculate_cost_usd(prompt_tokens, completion_tokens, price)
 
     db.session.add(ConsumoTokens(
         institucion_id=curso.institucion_id,
@@ -176,16 +233,22 @@ def _record_consumption(curso, user_id, tipo_operacion, reservation_tokens, usag
         tipo_operacion=tipo_operacion,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        costo_estimado_usd=0,
+        costo_estimado_usd=cost,
+        precio_modelo_ia_id=price.id if price else None,
+        proveedor_modelo=DEFAULT_PROVIDER,
+        modelo_ia=DEFAULT_MODEL,
+        precio_prompt_por_millon_usd=price.precio_prompt_por_millon_usd if price else None,
+        precio_completion_por_millon_usd=price.precio_completion_por_millon_usd if price else None,
     ))
 
 
-def _save_chat_exchange(sesion, contenido, respuesta_text, citas_json, tipo_interaccion):
+def _save_chat_exchange(sesion, contenido, respuesta_text, citas_json, tipo_interaccion, image_name=None):
     """Persist a student message and its assistant reply, including fallback replies."""
     msg_user = MensajeChat(
         sesion_chat_id=sesion.id,
         rol='user',
         contenido=contenido,
+        imagen_nombre=image_name,
         tipo_interaccion=tipo_interaccion,
     )
     msg_assistant = MensajeChat(
@@ -373,8 +436,13 @@ def send_mensaje(sesion_id):
 
     data = request.get_json() or {}
     contenido = (data.get('contenido') or '').strip()
-    if not contenido:
-        return jsonify({'message': 'contenido es requerido'}), 400
+    try:
+        image = _validated_chat_image(data)
+    except ValueError as exc:
+        return jsonify({'message': str(exc)}), 400
+    if not contenido and not image:
+        return jsonify({'message': 'contenido o imagen es requerido'}), 400
+    contenido = contenido or 'Analiza la imagen adjunta.'
 
     curso = Curso.query.get(sesion.curso_id)
     if not curso:
@@ -392,26 +460,32 @@ def send_mensaje(sesion_id):
         requested_mode='chat',
         student_id=user_id,
         max_tokens=min(MAX_COMPLETION_TOKENS, quota['tokens_disponibles']),
+        image=image,
     )
 
     service_unavailable = False
     try:
-        respuesta_text, citas_json, usage = _call_n8n_chat(payload)
+        respuesta_text, citas_json, usage, modo_aplicado = _call_n8n_chat(payload)
     except Exception:
         logger.exception('student_chat_n8n_unavailable', extra={'event': 'student_chat_n8n_unavailable'})
         respuesta_text = CHAT_SERVICE_UNAVAILABLE_MESSAGE
         citas_json = None
         usage = None
+        modo_aplicado = None
         service_unavailable = True
 
-    msg_user, msg_assistant = _save_chat_exchange(sesion, contenido, respuesta_text, citas_json, 'consulta')
+    msg_user, msg_assistant = _save_chat_exchange(
+        sesion, contenido, respuesta_text, citas_json, 'consulta', image.get('name') if image else None,
+    )
     if not service_unavailable:
-        _record_consumption(curso, user_id, 'chat_rag', reservation_tokens, usage)
+        _record_consumption(curso, user_id, 'chat_rag', contenido, respuesta_text, usage)
         db.session.commit()
 
     return jsonify({
         'mensaje_usuario': msg_user.to_dict(),
         'mensaje_asistente': msg_assistant.to_dict(),
+        'modo_solicitado': 'chat',
+        'modo_aplicado': modo_aplicado,
         'service_unavailable': service_unavailable,
     }), 200
 
@@ -467,6 +541,10 @@ def recurso_sintetico(sesion_id):
     data = request.get_json() or {}
     contenido = (data.get('contenido') or '').strip() or 'Generar recurso sintético'
     tipo_recurso = (data.get('tipo_recurso') or 'resumen').strip()
+    try:
+        image = _validated_chat_image(data)
+    except ValueError as exc:
+        return jsonify({'message': str(exc)}), 400
     curso = Curso.query.get(sesion.curso_id)
     if not curso:
         return jsonify({'message': 'Curso no encontrado'}), 404
@@ -483,35 +561,41 @@ def recurso_sintetico(sesion_id):
         requested_mode='recursos',
         student_id=user_id,
         max_tokens=min(MAX_COMPLETION_TOKENS, quota['tokens_disponibles']),
+        image=image,
     )
 
     try:
-        respuesta_text, citas_json, usage = _call_n8n_chat(payload)
+        respuesta_text, citas_json, usage, modo_aplicado = _call_n8n_chat(payload)
     except Exception as e:
         return jsonify({'message': f'Error al generar recurso: {str(e)}'}), 502
 
-    msg = MensajeChat(
-        sesion_chat_id=sesion.id,
-        rol='assistant',
-        contenido=respuesta_text,
-        citas_contexto_json=citas_json,
-        tipo_interaccion='recurso_sintetico',
+    msg_user, msg_assistant = _save_chat_exchange(
+        sesion,
+        contenido,
+        respuesta_text,
+        citas_json,
+        'recurso_sintetico',
+        image.get('name') if image else None,
     )
-    db.session.add(msg)
-    _record_consumption(curso, user_id, 'resumen_sintetico', reservation_tokens, usage)
+    _record_consumption(curso, user_id, 'resumen_sintetico', contenido, respuesta_text, usage)
     db.session.commit()
 
-    return jsonify({'recurso': msg.to_dict(), 'mensaje_asistente': msg.to_dict()}), 200
+    return jsonify({
+        'recurso': msg_assistant.to_dict(),
+        'mensaje_usuario': msg_user.to_dict(),
+        'mensaje_asistente': msg_assistant.to_dict(),
+        'modo_aplicado': modo_aplicado,
+    }), 200
 
 
 # ============================================================================
-# SOCRATIC HELP (CU-11)
+# PRACTICE HELP (CU-11)
 # ============================================================================
 
-@estudiante_bp.route('/chat/sesiones/<string:sesion_id>/socratico', methods=['POST'])
+@estudiante_bp.route('/chat/sesiones/<string:sesion_id>/practicar', methods=['POST'])
 @jwt_required()
-def ayuda_socratica(sesion_id):
-    """Request Socratic guidance for an exercise or problem."""
+def ayuda_practica(sesion_id):
+    """Guide the student through practicing an exercise or problem."""
     user_id = get_jwt_identity()
     sesion = _get_session_for_user(sesion_id, user_id)
     if not sesion:
@@ -520,13 +604,18 @@ def ayuda_socratica(sesion_id):
     if not _is_enrolled(user_id, sesion.curso_id):
         return jsonify({'message': 'No estás inscrito en este curso'}), 403
 
-    if not _modo_habilitado(sesion.curso_id, 'socratico'):
-        return jsonify({'message': 'La ayuda socrática está deshabilitada para este curso'}), 403
+    if not _modo_habilitado(sesion.curso_id, 'practicar'):
+        return jsonify({'message': 'El modo práctica está deshabilitado para este curso'}), 403
 
     data = request.get_json() or {}
     ejercicio = (data.get('ejercicio') or data.get('contenido') or data.get('mensaje') or '').strip()
-    if not ejercicio:
-        return jsonify({'message': 'ejercicio es requerido'}), 400
+    try:
+        image = _validated_chat_image(data)
+    except ValueError as exc:
+        return jsonify({'message': str(exc)}), 400
+    if not ejercicio and not image:
+        return jsonify({'message': 'ejercicio o imagen es requerido'}), 400
+    ejercicio = ejercicio or 'Ayúdame a resolver el ejercicio de la imagen adjunta.'
 
     curso = Curso.query.get(sesion.curso_id)
     if not curso:
@@ -541,29 +630,35 @@ def ayuda_socratica(sesion_id):
     payload = _build_n8n_chat_payload(
         sesion=sesion,
         message=ejercicio,
-        requested_mode='socratico',
+        requested_mode='practicar',
         student_id=user_id,
         max_tokens=min(MAX_COMPLETION_TOKENS, quota['tokens_disponibles']),
+        image=image,
     )
 
     service_unavailable = False
     try:
-        respuesta_text, citas_json, usage = _call_n8n_chat(payload)
+        respuesta_text, citas_json, usage, modo_aplicado = _call_n8n_chat(payload)
     except Exception:
-        logger.exception('student_socratic_n8n_unavailable', extra={'event': 'student_socratic_n8n_unavailable'})
+        logger.exception('student_practice_n8n_unavailable', extra={'event': 'student_practice_n8n_unavailable'})
         respuesta_text = CHAT_SERVICE_UNAVAILABLE_MESSAGE
         citas_json = None
         usage = None
+        modo_aplicado = None
         service_unavailable = True
 
-    msg_user, msg_assistant = _save_chat_exchange(sesion, ejercicio, respuesta_text, citas_json, 'socratico')
+    msg_user, msg_assistant = _save_chat_exchange(
+        sesion, ejercicio, respuesta_text, citas_json, 'practicar', image.get('name') if image else None,
+    )
     if not service_unavailable:
-        _record_consumption(curso, user_id, 'socratico', reservation_tokens, usage)
+        _record_consumption(curso, user_id, 'practicar', ejercicio, respuesta_text, usage)
         db.session.commit()
 
     return jsonify({
         'mensaje_usuario': msg_user.to_dict(),
         'mensaje_asistente': msg_assistant.to_dict(),
+        'modo_solicitado': 'practicar',
+        'modo_aplicado': modo_aplicado,
         'service_unavailable': service_unavailable,
     }), 200
 
