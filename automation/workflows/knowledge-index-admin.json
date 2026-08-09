@@ -12,7 +12,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body || $json;\nconst action = String(body.action || '').trim();\nconst cursoId = body.curso_id;\nconst institucionId = body.institucion_id;\nif (!cursoId || !institucionId) throw new Error('curso_id e institucion_id son obligatorios.');\nif (!['delete_document', 'clear_course'].includes(action)) throw new Error('action debe ser delete_document o clear_course.');\nconst archivo = action === 'delete_document' ? String(body.archivo || '').trim() : null;\nif (action === 'delete_document' && !archivo) throw new Error('archivo es obligatorio para delete_document.');\nreturn [{ json: { action, archivo, namespace: `curso_${cursoId}` } }];"
+        "jsCode": "const body = $json.body || $json;\nconst action = String(body.action || '').trim();\nconst cursoId = body.curso_id;\nconst institucionId = body.institucion_id;\nif (!cursoId || !institucionId) throw new Error('curso_id e institucion_id son obligatorios.');\nif (!['delete_document', 'clear_course'].includes(action)) throw new Error('action debe ser delete_document o clear_course.');\nconst archivo = action === 'delete_document' ? String(body.archivo || '').trim() : null;\nif (action === 'delete_document' && !archivo) throw new Error('archivo es obligatorio para delete_document.');\nreturn [{ json: { action, archivo, namespace: `inst_${institucionId}_curso_${cursoId}` } }];"
       },
       "id": "59622a9e-4758-48d8-9aec-ea1d054a92b4",
       "name": "Validar acción del agente",

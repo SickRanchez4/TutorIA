@@ -1,125 +1,518 @@
 {
-  "name": "TutorIA - Materiales PDF a Pinecone",
   "nodes": [
     {
-      "parameters": { "httpMethod": "POST", "path": "upload-knowledge", "responseMode": "responseNode", "options": {} },
-      "id": "d08f7924-0a84-4df8-8e1e-406aa2352647",
-      "name": "Webhook: Recibir materiales",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "upload-knowledge",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "62f005ff-848d-4a14-845e-f22225fe84d3",
+      "name": "Webhook: Recibir Multi-PDFs (SaaS)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 300],
-      "webhookId": "tutoria-upload-knowledge"
+      "position": [
+        736,
+        1104
+      ],
+      "webhookId": "upload-pdf-webhook"
     },
     {
       "parameters": {
-        "jsCode": "const request = $input.first();\nconst query = request.json.query || {};\nconst binary = request.binary || {};\nconst cursoId = query.curso_id;\nconst institucionId = query.institucion_id;\nif (!cursoId || !institucionId) throw new Error('curso_id e institucion_id son obligatorios.');\nconst files = Object.entries(binary);\nif (!files.length) throw new Error('No se recibieron archivos PDF en multipart/form-data.');\nreturn files.map(([key, file]) => {\n  if (file.mimeType !== 'application/pdf' && !String(file.fileName || '').toLowerCase().endsWith('.pdf')) throw new Error(`El archivo ${file.fileName || key} no es PDF.`);\n  return { json: { curso_id: Number(cursoId), institucion_id: String(institucionId), coordinador_id: query.coordinador_id ? String(query.coordinador_id) : null, namespace: `curso_${cursoId}`, archivo: file.fileName || key }, binary: { data: file } };\n});"
+        "jsCode": "// 1. Normalizar ítems del Webhook: Convertir múltiples propiedades binarias (file_0, file_1...) en ítems individuales\nconst results = [];\nconst webhookData = $input.first().json;\nconst body = webhookData.body || {};\nconst query = webhookData.query || {};\n\n// Extraer metadatos de seguridad y negocio\nconst institucionId = body.institucion_id || query.institucion_id;\nconst cursoId = body.curso_id || query.curso_id;\nconst coordinadorId = body.coordinador_id || query.coordinador_id || 'no_especificado';\n\nif (!institucionId || !cursoId) {\n  throw new Error('Error de Seguridad [400]: Los parámetros institucion_id y curso_id son obligatorios para el aislamiento de datos.');\n}\n\n// Iterar sobre todos los binarios recibidos y convertirlos en ítems uniformes con clave 'data'\nconst binaryData = $input.first().binary || {};\nfor (const [key, fileObj] of Object.entries(binaryData)) {\n  results.push({\n    json: {\n      institucion_id: String(institucionId),\n      curso_id: String(cursoId),\n      coordinador_id: String(coordinadorId),\n      originalKey: key,\n      fileName: fileObj.fileName || `documento_${key}.pdf`\n    },\n    binary: {\n      data: fileObj\n    }\n  });\n}\n\nif (results.length === 0) {\n  throw new Error('Error [400]: No se detectaron archivos binarios en la petición.');\n}\n\nreturn results;"
       },
-      "id": "470d47c9-b776-4c2d-9be9-4a6ca7f90f1b",
-      "name": "Normalizar PDFs del backend",
+      "id": "163c29e9-59d1-4b24-9d86-979e373fc59f",
+      "name": "Normalizar Múltiples Binarios",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 300]
+      "position": [
+        960,
+        1104
+      ]
     },
     {
-      "parameters": { "operation": "pdf", "binaryPropertyName": "data", "options": {} },
-      "id": "d04c3acf-51d6-46e1-9992-8fc5bd4c30c5",
-      "name": "Extraer texto de cada PDF",
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "id": "4791fa86-3aaa-44a5-85da-9a97faa7f7c5",
+      "name": "Extraer Texto de PDF",
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
-      "position": [720, 300]
+      "position": [
+        1184,
+        1104
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const sourceFiles = $('Normalizar PDFs del backend').all();\nconst outputs = $input.all();\nconst size = 1200;\nconst overlap = 150;\nconst chunks = [];\noutputs.forEach((item, fileIndex) => {\n  const source = sourceFiles[fileIndex]?.json;\n  const text = String(item.json.data || '').replace(/\\s+/g, ' ').trim();\n  if (!source || !text) return;\n  let chunkIndex = 0;\n  for (let start = 0; start < text.length; start += size - overlap) {\n    const texto = text.slice(start, start + size).trim();\n    if (texto.length < 30) continue;\n    const safeFile = source.archivo.replace(/[^a-zA-Z0-9_-]/g, '_');\n    chunks.push({ json: { ...source, texto, pagina: null, chunk_index: chunkIndex, vector_id: `curso_${source.curso_id}__${safeFile}__c${chunkIndex}` } });\n    chunkIndex += 1;\n    if (start + size >= text.length) break;\n  }\n});\nif (!chunks.length) throw new Error('No se extrajo texto utilizable de los PDF recibidos.');\nreturn chunks;"
-      },
-      "id": "d4167874-28dd-4943-a448-e1a1c624772f",
-      "name": "Dividir texto y crear metadatos",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [960, 300]
-    },
-    {
-      "parameters": { "jsCode": "const chunks = $input.all().map((item) => item.json);\nreturn [{ json: { chunks, input: chunks.map((chunk) => chunk.texto) } }];" },
-      "id": "7bd1a267-78ce-4d34-8e77-a4d2e9d20a23",
-      "name": "Agrupar solicitud de embeddings",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1200, 300]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.openai.com/v1/embeddings",
-        "sendHeaders": true,
-        "headerParameters": { "parameters": [{ "name": "Authorization", "value": "=Bearer {{$env.OPENAI_API_KEY}}" }, { "name": "Content-Type", "value": "application/json" }] },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ { model: $env.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small', input: $('Agrupar solicitud de embeddings').item.json.input } }}",
+        "jsonMode": "expressionData",
+        "jsonData": "={{ $json.pageContent }}",
         "options": {}
       },
-      "id": "6dba948c-3bea-4d30-9595-3f93c8111534",
-      "name": "OpenAI: Generar embeddings",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1440, 300]
+      "id": "ba3b777c-9071-44d6-96d1-be734d0fa004",
+      "name": "Default Data Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1,
+      "position": [
+        1760,
+        1344
+      ]
     },
     {
       "parameters": {
-        "jsCode": "const request = $('Agrupar solicitud de embeddings').item.json;\nconst embeddings = Array.isArray($json.data) ? $json.data : [];\nconst vectors = request.chunks.map((chunk, index) => ({ id: chunk.vector_id, values: embeddings.find((embedding) => embedding.index === index)?.embedding || embeddings[index]?.embedding, metadata: { institucion_id: chunk.institucion_id, curso_id: chunk.curso_id, archivo: chunk.archivo, pagina: chunk.pagina, chunk_index: chunk.chunk_index, texto: chunk.texto, indexed_at: new Date().toISOString() } })).filter((vector) => Array.isArray(vector.values) && vector.values.length);\nif (!vectors.length) throw new Error('OpenAI no devolvió embeddings válidos.');\nreturn [{ json: { namespace: request.chunks[0].namespace, vectors, chunks_indexados: vectors.length, archivos_procesados: new Set(request.chunks.map((chunk) => chunk.archivo)).size } }];"
+        "options": {
+          "dimensions": 512
+        }
       },
-      "id": "02bb051d-5246-487b-b2f3-8d1b9ca4bf31",
-      "name": "Construir vectores Pinecone",
+      "id": "6f830866-a4e7-4ebd-884b-c5fd4f5f43cf",
+      "name": "Embeddings OpenAI",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1536,
+        1344
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "330OjeKLZRs3QA0J",
+          "name": "Rico OpenAi Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "tutoria-app",
+          "mode": "list",
+          "cachedResultName": "tutoria-app"
+        },
+        "options": {
+          "pineconeNamespace": "={{ $json.metadata.namespace }}"
+        }
+      },
+      "id": "af3b5568-9fb5-4757-8801-441485e5c587",
+      "name": "Pinecone: Insertar Vectores Aislados",
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1,
+      "position": [
+        1648,
+        1104
+      ],
+      "credentials": {
+        "pineconeApi": {
+          "id": "4NBMEod3kWZGPnxN",
+          "name": "RastonePinecone"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enriquecimiento de Metadatos por Archivo para LangChain y Vectorización\nconst results = [];\nconst timestamp = new Date().toISOString();\nconst archivosConError = [];\n\nfor (const item of $input.all()) {\n  const textContent = item.json.data || item.json.text || '';\n  const fileName = $('Normalizar Múltiples Binarios').first().json.fileName ;\n  const institucionId = $('Normalizar Múltiples Binarios').first().json.institucion_id ;\n  const cursoId = $('Normalizar Múltiples Binarios').first().json.curso_id ;\n  const coordinadorId = $('Normalizar Múltiples Binarios').first().json.coordinador_id ;\n\n  // Detección granular: Si un archivo es escaneado o sin texto, se reporta sin tumbar los demás\n  if (!textContent.trim()) {\n    archivosConError.push(fileName);\n    continue;\n  }\n\n  const namespace = `inst_${institucionId}_curso_${cursoId}`;\n\n  results.push({\n    json: {\n      pageContent: textContent,\n      metadata: {\n        sourceFile: fileName,\n        namespace: namespace,\n        institucion_id: institucionId,\n        curso_id: cursoId,\n        coordinador_id: coordinadorId,\n        uploadedAt: timestamp\n      },\n      // Pasamos el binario intacto para el respaldo en Drive en el siguiente paso\n      hasError: false\n    },\n    binary: item.binary\n  });\n}\n\nif (results.length === 0) {\n  throw new Error(`[Error 422 de Lectura]: Ninguno de los PDFs subidos contenía texto legible. Archivos con fallo de lectura/OCR: [${archivosConError.join(', ')}]`);\n}\n\nreturn results;"
+      },
+      "id": "6ad2e906-ceda-4801-81a3-9d9c6d74c680",
+      "name": "Enriquecer Metadatos y Aislamiento",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1680, 300]
+      "position": [
+        1408,
+        1104
+      ]
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{$env.PINECONE_HOST + '/vectors/upsert'}}",
-        "sendHeaders": true,
-        "headerParameters": { "parameters": [{ "name": "Api-Key", "value": "={{$env.PINECONE_API_KEY}}" }, { "name": "Content-Type", "value": "application/json" }] },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ { namespace: $json.namespace, vectors: $json.vectors } }}",
+        "jsCode": "// Tomamos los metadatos del primer archivo del lote (todos pertenecen a la misma institución en esta petición)\nconst folderName = 'INST_' + $('Normalizar Múltiples Binarios').first().json.institucion_id;\n\nreturn [{\n  json: {\n    folderName: folderName,\n    institucion_id: $('Normalizar Múltiples Binarios').first().json.institucion_id,\n    curso_id: $('Normalizar Múltiples Binarios').first().json.curso_id,\n    coordinador_id: $('Normalizar Múltiples Binarios').first().json.coordinador_id\n  }\n}];"
+      },
+      "id": "63c73ed2-dae3-4dd8-856e-f651137c60c1",
+      "name": "Aislar ID para Búsqueda de Carpeta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2112,
+        1104
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "queryString": "={{ $json.folderName }}",
+        "returnAll": true,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "1c4KawDqAor41THp3fVUbhtiWWaMN9tYr",
+            "mode": "list",
+            "cachedResultName": "tutoria-knowledge-db",
+            "cachedResultUrl": "https://drive.google.com/drive/folders/1c4KawDqAor41THp3fVUbhtiWWaMN9tYr"
+          },
+          "whatToSearch": "folders"
+        },
         "options": {}
       },
-      "id": "2b9814ed-e81d-4e0c-ae2d-4db5f547a124",
-      "name": "Pinecone: Upsert de vectores",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1920, 300]
+      "id": "20f4b016-fd4b-4c91-aa99-9950ea4071a7",
+      "name": "Google Drive: Buscar Carpeta INST_{ID}",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2384,
+        1104
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bJ8sIKQKBDU0L7Qy",
+          "name": "GDrive Rastone"
+        }
+      }
     },
     {
-      "parameters": { "jsCode": "const data = $('Construir vectores Pinecone').item.json;\nreturn [{ json: { success: true, namespace: data.namespace, archivos_procesados: data.archivos_procesados, chunks_indexados: data.chunks_indexados, indexed_at: new Date().toISOString() } }];" },
-      "id": "570ee5f0-d0a9-4a65-b8d0-b2e25de1fa22",
-      "name": "Formatear carga exitosa",
-      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "check-folder-exists",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            },
+            {
+              "id": "0879e788-0394-4a5f-af93-d580421ec1e7",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "400088a9-1829-4774-95e8-e7ead3e755c8",
+      "name": "IF: ¿Existe Carpeta INST_{ID}?",
+      "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2160, 300]
+      "position": [
+        2672,
+        1104
+      ],
+      "alwaysOutputData": false
     },
     {
-      "parameters": { "respondWith": "json", "responseBody": "={{$json}}", "options": { "responseCode": 200 } },
-      "id": "471f20e2-b4e9-458f-ac9c-dccef35cce49",
-      "name": "Responder al backend",
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $('Aislar ID para Búsqueda de Carpeta').first().json.folderName }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1c4KawDqAor41THp3fVUbhtiWWaMN9tYr",
+          "mode": "list",
+          "cachedResultName": "tutoria-knowledge-db",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1c4KawDqAor41THp3fVUbhtiWWaMN9tYr"
+        },
+        "options": {}
+      },
+      "id": "b024f98e-bad0-4d14-bdc0-7fef0336afb0",
+      "name": "Google Drive: Crear Carpeta INST_{ID}",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2880,
+        1264
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bJ8sIKQKBDU0L7Qy",
+          "name": "GDrive Rastone"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chunkOverlap": 24,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        1888,
+        1504
+      ],
+      "id": "ce873b28-8970-4812-8d07-771e92a7f038",
+      "name": "Recursive Character Text Splitter"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "bb1d65f1-87ae-4fe8-8ff7-b0df4f51dd69",
+      "name": "Responder al Cliente (API SaaS)",
       "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.1,
-      "position": [2400, 300]
+      "typeVersion": 1,
+      "position": [
+        3792,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Atrapamos los datos de la carpeta que acaba de salir de la rama ganadora\n// No importa si viene de \"Buscar Carpeta\" o \"Crear Carpeta\", $input.all() toma el nodo activo.\nconst folderInput = $input.all();\n\nif (!folderInput || folderInput.length === 0 || !folderInput[0].json.id) {\n  throw new Error(\"Error Crítico: No se recibió un ID de carpeta válido desde el paso anterior en Google Drive.\");\n}\n\nconst targetFolderId = folderInput[0].json.id;\nconst folderName = folderInput[0].json.name;\n\n// 2. Traer los archivos binarios intactos desde el nodo origen de PDFs\nconst pdfItems = $('Normalizar Múltiples Binarios').all();\n\n// 3. Empaquetamos cada PDF inyectándole el ID exacto y nombre de la carpeta destino\nconst results = [];\n\nfor (const item of pdfItems) {\n  results.push({\n    json: {\n      ...item.json,\n      targetFolderId: targetFolderId,\n      targetFolderName: folderName,\n      // Nos aseguramos de que haya un nombre de archivo válido para Drive\n      fileName: item.json.fileName || item.json.name || 'documento.pdf'\n    },\n    binary: item.binary // Pasamos el binario intacto\n  });\n}\n\nreturn results;"
+      },
+      "id": "607ed8f5-7f7f-4e38-950a-a8feeeae63bf",
+      "name": "Vincular PDFs con ID de Carpeta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3136,
+        1088
+      ]
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.fileName }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.targetFolderId }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "6a86ff22-1421-46ca-abd7-1fa0aa8122c0",
+      "name": "Google Drive: Subir PDFs a INST_{ID}",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3344,
+        1088
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "bJ8sIKQKBDU0L7Qy",
+          "name": "GDrive Rastone"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Tomamos los resultados que acaban de salir del nodo de Google Drive\nconst driveResults = $input.all();\nif (driveResults.length === 0) {\n  throw new Error(\"No se recibieron archivos desde el nodo anterior de Google Drive.\");\n}\n\n// 2. Extraemos los datos directamente de las propiedades heredadas en el primer ítem del input\n// (Así evitamos el error de 'hasn't been executed' al no depender de búsquedas hacia atrás)\nconst firstItemJson = driveResults[0].json;\nconst institucionId = firstItemJson.institucion_id || 'no_especificado';\nconst cursoId = firstItemJson.curso_id || 'no_especificado';\nconst coordinadorId = firstItemJson.coordinador_id || 'no_especificado';\nconst targetFolderName = firstItemJson.targetFolderName || `INST_${institucionId}`;\nconst targetFolderId = firstItemJson.targetFolderId || '';\n\n// 3. Obtenemos metadatos secundarios de forma segura (con fallback si no se ejecutaron en la misma sesión)\nlet namespace = `inst_${institucionId}_curso_${cursoId}`;\nlet totalChunks = 0;\n\ntry {\n  const metaNode = $('Enriquecer Metadatos y Aislamiento').first();\n  if (metaNode && metaNode.json && metaNode.json.metadata) {\n    namespace = metaNode.json.metadata.namespace;\n  }\n} catch (e) {\n  // Usará el namespace por defecto generado arriba\n}\n\ntry {\n  const pineconeResults = $('Pinecone: Insertar Vectores Aislados').all();\n  totalChunks = pineconeResults ? pineconeResults.length : 0;\n} catch (e) {\n  // Si se ejecuta de forma aislada sin memoria de Pinecone, pondrá 0\n}\n\n// 4. Mapeamos los archivos guardados en Google Drive\nconst archivosRespaldados = driveResults.map(item => ({\n  fileId: item.json.id,\n  fileName: item.json.name || item.json.fileName,\n  webViewLink: item.json.webViewLink || ''\n}));\n\n// 5. Retornamos la estructura limpia para el Webhook\nreturn [{\n  json: {\n    success: true,\n    status: 200,\n    message: `Materiales vectorizados y respaldados correctamente en la carpeta '${targetFolderName}'.`,\n    data: {\n      institucion_id: institucionId,\n      curso_id: cursoId,\n      coordinador_id: coordinadorId,\n      pinecone: {\n        namespace: namespace,\n        index: \"blindev-web\",\n        total_pdfs_vectorizados: driveResults.length,\n        total_chunks_generados: totalChunks\n      },\n      googleDriveBackup: {\n        folderName: targetFolderName,\n        folderId: targetFolderId,\n        total_archivos_guardados: archivosRespaldados.length,\n        archivos: archivosRespaldados\n      }\n    }\n  }\n}];"
+      },
+      "id": "7dbfec4b-042f-42b0-b1ec-a3cb9532ec7a",
+      "name": "Construir Respuesta Estructurada1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3584,
+        1088
+      ]
     }
   ],
   "connections": {
-    "Webhook: Recibir materiales": { "main": [[{ "node": "Normalizar PDFs del backend", "type": "main", "index": 0 }]] },
-    "Normalizar PDFs del backend": { "main": [[{ "node": "Extraer texto de cada PDF", "type": "main", "index": 0 }]] },
-    "Extraer texto de cada PDF": { "main": [[{ "node": "Dividir texto y crear metadatos", "type": "main", "index": 0 }]] },
-    "Dividir texto y crear metadatos": { "main": [[{ "node": "Agrupar solicitud de embeddings", "type": "main", "index": 0 }]] },
-    "Agrupar solicitud de embeddings": { "main": [[{ "node": "OpenAI: Generar embeddings", "type": "main", "index": 0 }]] },
-    "OpenAI: Generar embeddings": { "main": [[{ "node": "Construir vectores Pinecone", "type": "main", "index": 0 }]] },
-    "Construir vectores Pinecone": { "main": [[{ "node": "Pinecone: Upsert de vectores", "type": "main", "index": 0 }]] },
-    "Pinecone: Upsert de vectores": { "main": [[{ "node": "Formatear carga exitosa", "type": "main", "index": 0 }]] },
-    "Formatear carga exitosa": { "main": [[{ "node": "Responder al backend", "type": "main", "index": 0 }]] }
+    "Webhook: Recibir Multi-PDFs (SaaS)": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Múltiples Binarios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Múltiples Binarios": {
+      "main": [
+        [
+          {
+            "node": "Extraer Texto de PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Texto de PDF": {
+      "main": [
+        [
+          {
+            "node": "Enriquecer Metadatos y Aislamiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Pinecone: Insertar Vectores Aislados",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone: Insertar Vectores Aislados",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone: Insertar Vectores Aislados": {
+      "main": [
+        [
+          {
+            "node": "Aislar ID para Búsqueda de Carpeta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enriquecer Metadatos y Aislamiento": {
+      "main": [
+        [
+          {
+            "node": "Pinecone: Insertar Vectores Aislados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aislar ID para Búsqueda de Carpeta": {
+      "main": [
+        [
+          {
+            "node": "Google Drive: Buscar Carpeta INST_{ID}",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: Buscar Carpeta INST_{ID}": {
+      "main": [
+        [
+          {
+            "node": "IF: ¿Existe Carpeta INST_{ID}?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: ¿Existe Carpeta INST_{ID}?": {
+      "main": [
+        [
+          {
+            "node": "Vincular PDFs con ID de Carpeta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Google Drive: Crear Carpeta INST_{ID}",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: Crear Carpeta INST_{ID}": {
+      "main": [
+        [
+          {
+            "node": "Vincular PDFs con ID de Carpeta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vincular PDFs con ID de Carpeta": {
+      "main": [
+        [
+          {
+            "node": "Google Drive: Subir PDFs a INST_{ID}",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive: Subir PDFs a INST_{ID}": {
+      "main": [
+        [
+          {
+            "node": "Construir Respuesta Estructurada1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Respuesta Estructurada1": {
+      "main": [
+        [
+          {
+            "node": "Responder al Cliente (API SaaS)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "active": false,
-  "settings": { "executionOrder": "v1" },
   "pinData": {},
-  "versionId": "tutoria-upload-knowledge-v2"
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "adb834fd7f053368d955cc6d48a200d094cd8565697438b4bb074702e6c47c9c"
+  }
 }

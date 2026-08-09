@@ -1,0 +1,682 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "course-chat",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f267fdeb-5a00-4a2d-bcf7-f97912235ce6",
+      "name": "Webhook: Recibir Mensaje",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        2000
+      ],
+      "webhookId": "course-chat-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nreturn [\n  {\n    json: {\n      institutionId: input.institutionId,\n      courseId: input.courseId,\n      courseName: input.courseName,\n      pineconeNamespace: input.pineconeNamespace,\n\n      chatbotPrompt: input.chatbotPrompt,\n      chatbotTemperature: input.chatbotTemperature,\n      extendKnowledge: input.extendKnowledge,\n\n      requestedMode: input.requestedMode,\n\n      studentId: input.studentId,\n      conversationId: input.conversationId,\n\n      message: input.message,\n\n      // Entrada multimodal\n      inputType: input.inputType,\n      hasText: input.hasText,\n      hasImage: input.hasImage,\n\n      //image: input.image,\n\n      // Solo referencia al procesamiento visual\n      imageAnalysis: input.imageAnalysis || '',\n      hasImageAnalysis: input.hasImageAnalysis || false,\n\n      maxTokens: input.maxTokens\n    }\n  }\n];"
+      },
+      "id": "ab281d4e-633d-415c-a59a-230c281aed8d",
+      "name": "Preparar Contexto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2672,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Preparar Contexto').first().json;\n\nconst courseId = cfg.courseId || '';\nconst courseName = cfg.courseName || 'el curso';\nconst namespace =\n  cfg.pineconeNamespace ||\n  `curso_${courseId}`;\n\nconst requestedMode = String(\n  cfg.requestedMode || 'chat'\n)\n  .trim()\n  .toLowerCase();\n\nconst allowedModes = [\n  'chat',\n  'recursos',\n  'practicar'\n];\n\nif (!allowedModes.includes(requestedMode)) {\n  throw new Error(`Modo no soportado: ${requestedMode}`);\n}\n\n\n// ============================================================\n// CONTEXTO VISUAL ACTUAL\n// ============================================================\n\nconst hasImageAnalysis =\n  cfg.hasImageAnalysis === true &&\n  typeof cfg.imageAnalysis === 'string' &&\n  cfg.imageAnalysis.trim().length > 0;\n\nconst imageAnalysis = hasImageAnalysis\n  ? cfg.imageAnalysis.trim()\n  : '';\n\n\n// ============================================================\n// PROMPT BASE\n// ============================================================\n\nconst basePrompt = `\nEres TutorIA, el asistente académico inteligente del curso \"${courseName}\".\n\nTu misión es enseñar a los estudiantes sobre los temas del curso y adaptar tu forma de responder según el modo solicitado.\n\nDebes mantener siempre un comportamiento académico, claro, preciso y orientado al aprendizaje.\n`.trim();\n\n\n// ============================================================\n// HERRAMIENTAS\n// ============================================================\n\nconst toolProtocol = `\nINSTRUCCIONES PARA EL USO DE HERRAMIENTAS:\n\nPara \"rag_chat_tool\":\n\n- Utiliza obligatoriamente el namespace \"${namespace}\".\n- El parámetro query debe contener la duda, pregunta o tema que el estudiante desea consultar.\n\nIMPORTANTE:\n\n- En modo CHAT puedes utilizar rag_chat_tool.\n- En modo PRÁCTICA debes utilizar rag_chat_tool.\n- En modo RECURSOS este agente no debe ejecutarse; el flujo de generación de recursos se ejecuta mediante un workflow independiente.\n\nCuando utilices información recuperada mediante RAG, utilízala como material oficial del curso.\n`.trim();\n\n\n// ============================================================\n// REGLA DE CONOCIMIENTO\n// ============================================================\n\nconst knowledgeRule = cfg.extendKnowledge\n  ? `\nREGLA DE CONOCIMIENTO:\n\nPuedes complementar con conocimiento general cuando el material del curso no cubra la pregunta.\n\nDebes distinguir claramente entre:\n- Información proveniente del material oficial del curso.\n- Información adicional proveniente de conocimiento general.\n\nNo presentes conocimiento general como si fuera material oficial del curso.\n`.trim()\n  : `\nREGLA DE CONOCIMIENTO ESTRICTA:\n\nResponde exclusivamente utilizando:\n\n1. La información obtenida mediante rag_chat_tool.\n2. El contexto visual de la imagen actual cuando exista.\n\nSi la búsqueda no devuelve información suficiente para responder:\n\n- Indica amablemente que no cuentas con información suficiente en el material oficial del curso.\n- No inventes información.\n- No presentes conocimiento externo como si fuera parte del curso.\n`.trim();\n\n\n// ============================================================\n// CONTEXTO VISUAL\n// ============================================================\n\nlet visualContext = '';\n\nif (hasImageAnalysis) {\n  visualContext = `\nCONTEXTO VISUAL DE LA IMAGEN ACTUAL\n\nEl estudiante proporcionó una imagen en el mensaje actual.\n\nLa imagen fue analizada previamente por un modelo especializado.\n\nEl siguiente bloque contiene EXCLUSIVAMENTE el análisis correspondiente a la imagen enviada en el mensaje actual:\n\n--- INICIO ANÁLISIS DE LA IMAGEN ACTUAL ---\n\n${imageAnalysis}\n\n--- FIN ANÁLISIS DE LA IMAGEN ACTUAL ---\n\n\nREGLAS CRÍTICAS SOBRE LA IMAGEN ACTUAL:\n\n- El análisis anterior corresponde a la imagen enviada en el mensaje ACTUAL.\n- Debes utilizar este análisis como el contexto visual vigente para responder la consulta actual.\n- Si el estudiante hace referencia a \"esta imagen\", \"la imagen\", \"estos elementos\", \"esto\", \"este esquema\", \"esta captura\", etc., debes interpretar esas referencias utilizando primero este análisis.\n- No debes asumir que la imagen actual es la misma imagen enviada anteriormente.\n- No debes reutilizar información visual proveniente de imágenes anteriores salvo que el estudiante explícitamente indique que se refiere a una imagen anterior.\n- Si existe una contradicción entre información visual almacenada en la memoria y el análisis de la imagen actual, SIEMPRE debes priorizar el análisis de la imagen actual.\n- No inventes elementos, textos, datos, relaciones o características que no estén presentes en el análisis.\n- No describas al estudiante el proceso interno utilizado para analizar la imagen.\n`.trim();\n}\n\n\n// ============================================================\n// JERARQUÍA DE CONTEXTO\n// ============================================================\n\nconst contextPriority = `\nJERARQUÍA DE CONTEXTO\n\nCuando construyas una respuesta, utiliza la siguiente prioridad:\n\n1. MENSAJE ACTUAL DEL ESTUDIANTE.\n2. ANÁLISIS DE LA IMAGEN ACTUAL, cuando exista.\n3. INFORMACIÓN RECUPERADA MEDIANTE rag_chat_tool.\n4. MEMORIA DE CONVERSACIÓN ANTERIOR.\n\nLa memoria de conversación sirve principalmente para mantener continuidad conversacional.\n\nLa memoria NO debe utilizarse como fuente principal para determinar qué contiene una imagen actual.\n\nCuando exista una nueva imagen en el mensaje actual:\n\n- El análisis de esa imagen representa el contexto visual vigente.\n- Debe reemplazar cualquier contexto visual anterior para interpretar la consulta actual.\n- No debes asumir continuidad visual entre imágenes diferentes.\n\nSi el estudiante pregunta específicamente sobre una imagen anterior, utiliza la memoria únicamente cuando exista suficiente información explícita que permita identificar esa imagen.\n`.trim();\n\n\n// ============================================================\n// MODOS\n// ============================================================\n\nconst modeRules = {\n\n  chat: `\nMODO ACTUAL: CHAT DIRECTO\n\n- Ejecuta rag_chat_tool para obtener información del material oficial cuando la pregunta requiera conocimiento del curso.\n- Responde de forma directa, clara, estructurada y conversacional.\n- Si el estudiante proporciona una imagen, utiliza el contexto visual de la imagen actual.\n- Si la pregunta requiere relacionar la imagen con conceptos del curso, combina el análisis visual actual con la información recuperada mediante RAG.\n- No inventes información.\n- Si la información recuperada incluye fuentes o citas, menciónalas al final.\n`.trim(),\n\n\n  practicar: `\nMODO ACTUAL: ENTRENADOR DE PRÁCTICA\n\nROL:\nEres un Tutor Experto, directo y retador. Tu objetivo es hacer pensar al estudiante mediante el descubrimiento, evaluando su conocimiento sin rodeos.\n\nREGLAS DE COMPORTAMIENTO ESTRICTAS:\n\n1. CERO INTRODUCCIONES:\nEstá PROHIBIDO utilizar frases como:\n\"Claro, aquí tienes\",\n\"Vamos a practicar\",\n\"Ahora practicaremos\",\n\"El formato elegido será\".\n\nTu primer carácter debe ser el inicio del ejercicio.\n\n2. CERO TEORÍA PREVIA:\nUtiliza los datos obtenidos mediante rag_chat_tool como tu conocimiento interno.\nEl estudiante debe ver directamente el desafío.\n\nESCENARIO 1:\nEL ESTUDIANTE PIDE PRACTICAR UN TEMA NUEVO\n\n- Ejecuta obligatoriamente rag_chat_tool.\n- Utiliza la información recuperada para construir el ejercicio.\n- Si existe una imagen actual, utiliza también su análisis como contexto.\n- Genera DIRECTAMENTE un único ejercicio utilizando solamente UNO de estos formatos:\n\nFORMATO A — QUIZ:\nLanza 3 preguntas de opción múltiple con alternativas A, B, C y D.\n\nFORMATO B — CASO PRÁCTICO:\nPresenta una situación realista o problema aplicado al tema.\nColoca al estudiante en el centro del problema y pídele tomar una decisión o resolverlo.\n\nFORMATO C — RETO FEYNMAN:\nPide al estudiante que explique el concepto central utilizando lenguaje sencillo y sin jerga técnica.\n\nNo combines los tres formatos.\n\nTermina con una frase corta que invite al estudiante a responder.\n\nESCENARIO 2:\nEL ESTUDIANTE RESPONDE AL EJERCICIO PREVIO\n\n- Evalúa su respuesta utilizando el contexto recuperado.\n- Si existe una imagen relevante en el contexto actual, también puedes utilizarla.\n- Si acertó, felicítalo y refuerza brevemente el aprendizaje con la teoría oficial.\n- Si falló o está incompleto:\n  - Indica qué parte de su razonamiento presenta un problema.\n  - Proporciona una pista.\n  - NO reveles inmediatamente la respuesta correcta.\n  - Permite que el estudiante llegue a la solución.\n`.trim(),\n\n\n  recursos: `\nMODO ACTUAL: RECURSOS\n\nEste agente no debe generar recursos directamente.\n\nLa generación de recursos se ejecuta mediante un workflow independiente.\n`.trim()\n\n};\n\n\n// ============================================================\n// PROMPT PERSONALIZADO DEL COORDINADOR\n// ============================================================\n\nconst customPrompt = cfg.chatbotPrompt\n  ? `\n\nINSTRUCCIONES ADICIONALES DEL COORDINADOR:\n\n${cfg.chatbotPrompt}\n`.trim()\n  : '';\n\n\n// ============================================================\n// SYSTEM PROMPT FINAL\n// ============================================================\n\nconst systemMessage = [\n\n  basePrompt,\n\n  toolProtocol,\n\n  knowledgeRule,\n\n  contextPriority,\n\n  visualContext,\n\n  modeRules[requestedMode] || modeRules.chat,\n\n  customPrompt\n\n]\n  .filter(Boolean)\n  .join('\\n\\n');\n\n\n// ============================================================\n// OUTPUT\n// ============================================================\n\nreturn [\n  {\n    json: {\n      ...cfg,\n\n      requestedMode,\n\n      systemMessage: systemMessage.trim(),\n\n      temperature:\n        typeof cfg.chatbotTemperature === 'number'\n          ? cfg.chatbotTemperature\n          : 0.1\n    }\n  }\n];"
+      },
+      "id": "b05c5a29-066e-4249-8c8c-7974911b35a9",
+      "name": "Construir Configuración del Agente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2864,
+        1968
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.requestedMode }}",
+                    "rightValue": "chat",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "chat"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.requestedMode }}",
+                    "rightValue": "practicar",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "practicar"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.requestedMode }}",
+                    "rightValue": "recursos",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "recursos"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "8de47011-fba4-44fc-83da-0bbd9c89095c",
+      "name": "Switch: Modo",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        3104,
+        1936
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{\n  $('Construir Configuración del Agente').item.json.hasImageAnalysis\n    ? $('Construir Configuración del Agente').item.json.message\n      + '\\n\\n[CONTEXTO VISUAL DE LA IMAGEN ACTUAL]\\n'\n      + $('Construir Configuración del Agente').item.json.imageAnalysis\n      + '\\n[FIN DEL CONTEXTO VISUAL ACTUAL]'\n    : $('Construir Configuración del Agente').item.json.message\n}}",
+        "options": {
+          "systemMessage": "={{ $('Construir Configuración del Agente').item.json.systemMessage }}"
+        }
+      },
+      "id": "6c14f151-5b81-4c54-a0e9-cd780cad4b8d",
+      "name": "Agente del Curso",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        3568,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-5.4-mini",
+        "options": {
+          "temperature": "={{ $('Construir Configuración del Agente').item.json.temperature }}"
+        }
+      },
+      "id": "bdccaa63-a890-4bf9-8081-ebc73172660c",
+      "name": "Modelo de Chat",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        3424,
+        2160
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "330OjeKLZRs3QA0J",
+          "name": "Rico OpenAi Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Busca información explícita, conceptos teóricos, explicaciones factuales o resúmenes dentro del material de estudio del curso.",
+        "workflowId": {
+          "__rl": true,
+          "value": "k10AqX8N4sTm2c6K",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/k10AqX8N4sTm2c6K",
+          "cachedResultName": "Tool - RAG Chat"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "namespace": "={{ $json.pineconeNamespace }}",
+            "query": "={{\n  $json.hasImageAnalysis\n    ? $json.message + '\\n\\nContexto de la imagen actual:\\n' + $json.imageAnalysis\n    : $json.message\n}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query",
+              "displayName": "query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "namespace",
+              "displayName": "namespace",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        3856,
+        2160
+      ],
+      "id": "59dd3890-a700-4194-93db-e70b1823a364",
+      "name": "rag_chat_tool"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Construir Configuración del Agente').item.json.conversationId }}"
+      },
+      "id": "6b40ba62-6cc5-45c6-bbc4-c89948e33d75",
+      "name": "Memoria de Conversación",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        3664,
+        2160
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "4hppehWs52PsCQtg",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/4hppehWs52PsCQtg",
+          "cachedResultName": "Tool - Generador Mermaid"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "namespace": "={{ $('Construir Configuración del Agente').item.json.pineconeNamespace }}",
+            "query": "={{ $('Construir Configuración del Agente').item.json.message }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "query",
+              "displayName": "query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "namespace",
+              "displayName": "namespace",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string"
+            }
+          ],
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        },
+        "options": {}
+      },
+      "id": "500d31b5-b433-445a-ac87-5f27f377ffce",
+      "name": "Generar Recursos Mermaid",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3632,
+        1664
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cfg = $('Construir Configuración del Agente').first().json;\nconst subOutput = $json;\n\nconst raw =\n  subOutput.respuesta ??\n  subOutput.answer ??\n  subOutput.output ??\n  '';\n\nconst usage = subOutput.usage ?? null;\n\nconst citations =\n  subOutput.citas ??\n  subOutput.citations ??\n  [];\n\nconst updatedHistory =\n  subOutput.updated_history ??\n  subOutput.conversation_history ??\n  null;\n\nconst hasContext =\n  subOutput.has_context ??\n  subOutput.hasContext ??\n  false;\n\nconst startTime = cfg._startTime || Date.now();\n\nconst baseResponse = {\n  success: true,\n  mode: cfg.requestedMode,\n  conversationId: cfg.conversationId,\n  studentId: cfg.studentId,\n  cursoId: cfg.cursoId,\n  answer: raw,\n  citations,\n  usage,\n  updatedHistory,\n  hasContext,\n  processingTimeMs: Date.now() - startTime,\n  timestamp: new Date().toISOString()\n};\n\n\n// =====================================================\n// MODO RECURSOS\n// =====================================================\n\nif (cfg.requestedMode === 'recursos') {\n\n  let resource = null;\n  let parseError = false;\n\n  // ---------------------------------------------------\n  // CASO 1:\n  // El workflow generador ya devolvió la estructura\n  // ---------------------------------------------------\n\n  if (\n    subOutput.graphic !== undefined ||\n    subOutput.mermaid_code !== undefined\n  ) {\n\n    const graphic =\n      subOutput.graphic ??\n      subOutput.mermaid_code ??\n      null;\n\n    const diagramType =\n      subOutput.diagramType ??\n      subOutput.mermaid_type ??\n      'unknown';\n\n    const title =\n      subOutput.title ??\n      'Recurso visual';\n\n    if (graphic) {\n      resource = {\n        graphic,\n        diagramType,\n        title\n      };\n    }\n\n  }\n\n  // ---------------------------------------------------\n  // CASO 2:\n  // El agente devolvió JSON dentro de output/answer\n  // ---------------------------------------------------\n\n  else {\n\n    try {\n\n      let parsed = raw;\n\n      if (typeof raw === 'string') {\n\n        // Intento directo\n        try {\n          parsed = JSON.parse(raw);\n        } catch {\n\n          // Buscar JSON embebido\n          const match = raw.match(/\\{[\\s\\S]*\\}/);\n\n          if (match) {\n            parsed = JSON.parse(match[0]);\n          } else {\n            throw new Error('No se encontró JSON');\n          }\n        }\n      }\n\n      if (\n        parsed &&\n        typeof parsed === 'object'\n      ) {\n\n        const graphic =\n          parsed.graphic ??\n          parsed.mermaidCode ??\n          parsed.mermaid_code ??\n          null;\n\n        const diagramType =\n          parsed.diagramType ??\n          parsed.mermaidType ??\n          parsed.mermaid_type ??\n          'unknown';\n\n        const title =\n          parsed.title ??\n          'Recurso visual';\n\n        if (graphic) {\n\n          resource = {\n            graphic,\n            diagramType,\n            title\n          };\n\n        } else {\n          parseError = true;\n        }\n\n      } else {\n        parseError = true;\n      }\n\n    } catch (error) {\n      parseError = true;\n    }\n  }\n\n\n  // ===================================================\n  // RESPUESTA FINAL PARA RECURSOS\n  // ===================================================\n\n  const result = {\n    ...baseResponse,\n    resource\n  };\n\n  if (!resource || parseError) {\n\n    result.success = false;\n\n    result.error =\n      'No se pudo generar el recurso en el formato esperado.';\n\n    // Conservamos la respuesta original solamente\n    // para debugging / fallback.\n    result.answer = raw;\n  }\n\n  return [\n    {\n      json: result\n    }\n  ];\n}\n\n\n// =====================================================\n// CHAT / PRACTICAR\n// =====================================================\n\nreturn [\n  {\n    json: baseResponse\n  }\n];"
+      },
+      "id": "198c5a28-3f74-4696-9da8-0f22849d5613",
+      "name": "Formatear Respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4128,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "b1a6e3b2-b7bf-42de-88ed-a869c0e07fda",
+      "name": "Responder al Estudiante",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        4352,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst webhook = item.json || {};\n\n// ============================================================\n// 1. OBTENER EL PAYLOAD REAL DEL WEBHOOK\n// ============================================================\n//\n// n8n normalmente coloca el JSON recibido por POST dentro de\n// $json.body.\n//\n// El fallback permite que también funcione si en algún momento\n// ejecutas este nodo con el payload directamente en $json.\n//\n\nconst input =\n  webhook.body &&\n  typeof webhook.body === 'object'\n    ? webhook.body\n    : webhook;\n\n\n// ============================================================\n// 2. DATOS BÁSICOS DEL CURSO\n// ============================================================\n\nconst institutionId = input.institucion_id ?? null;\nconst courseId = input.curso_id ?? null;\n\nconst pineconeNamespace =\n  input.pinecone_namespace ||\n  (\n    institutionId !== null && courseId !== null\n      ? `inst_${institutionId}_curso_${courseId}`\n      : null\n  );\n\n\n// ============================================================\n// 3. DATOS DE CONFIGURACIÓN DEL AGENTE\n// ============================================================\n\nconst chatbotPrompt = input.chatbot_prompt || '';\n\nconst chatbotTemperature =\n  typeof input.chatbot_temperature === 'number'\n    ? input.chatbot_temperature\n    : Number(input.chatbot_temperature) || 0.1;\n\nconst extendKnowledge = Boolean(input.extend_knowledge);\n\nconst requestedMode =\n  String(input.requested_mode || 'chat')\n    .trim()\n    .toLowerCase();\n\n\n// ============================================================\n// 4. DATOS DE LA CONVERSACIÓN\n// ============================================================\n\nconst studentId = input.student_id ?? null;\n\nconst conversationId =\n  input.conversation_id ?? null;\n\nconst message =\n  typeof input.message === 'string'\n    ? input.message.trim()\n    : '';\n\n\n// ============================================================\n// 5. IMAGEN\n// ============================================================\n\nconst image = input.image || null;\n\nconst hasImage =\n  !!image &&\n  typeof image === 'object' &&\n  typeof image.data_url === 'string' &&\n  image.data_url.startsWith('data:image/');\n\n\n// ============================================================\n// 6. DETERMINAR SI HAY TEXTO\n// ============================================================\n\nconst hasText = message.length > 0;\n\n\n// ============================================================\n// 7. DETERMINAR TIPO DE INPUT\n// ============================================================\n\nlet inputType = 'text';\n\nif (hasText && hasImage) {\n  inputType = 'text_image';\n}\nelse if (hasImage) {\n  inputType = 'image';\n}\n\n\n// ============================================================\n// 8. DATOS NORMALIZADOS DE LA IMAGEN\n// ============================================================\n\nconst imageName = hasImage\n  ? image.name || null\n  : null;\n\nconst imageMimeType = hasImage\n  ? image.mime_type || null\n  : null;\n\n\n// ============================================================\n// 9. RESULTADO NORMALIZADO\n// ============================================================\n\nreturn [\n  {\n    json: {\n      // Identidad del curso\n      institutionId,\n      courseId,\n      courseName: input.curso_nombre || null,\n\n      // RAG\n      pineconeNamespace,\n\n      // Configuración\n      chatbotPrompt,\n      chatbotTemperature,\n      extendKnowledge,\n      requestedMode,\n\n      // Usuario / conversación\n      studentId,\n      conversationId,\n\n      // Mensaje\n      message,\n\n      // Input multimodal\n      inputType,\n      hasText,\n      hasImage,\n\n      // Imagen\n      image,\n      imageName,\n      imageMimeType,\n\n      // Análisis visual\n      imageAnalysis: '',\n      hasImageAnalysis: false,\n\n      // Tokens\n      maxTokens: input.max_tokens ?? null\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1472,
+        2000
+      ],
+      "id": "d9f94031-d717-4ac4-b275-bf0aa9907af2",
+      "name": "Obtener input",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "5d661468-0ca0-43b8-ad9a-03c55554d8d5",
+                    "leftValue": "={{ $json.inputType }}",
+                    "rightValue": "text",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "text"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.inputType }}",
+                    "rightValue": "image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "1b801800-a991-4b76-9ddb-eb20b4a10209"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "image"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "3b53905e-2182-4795-a528-81fcbec3b771",
+                    "leftValue": "={{ $json.inputType }}",
+                    "rightValue": "text_image",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "text_image"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1712,
+        1984
+      ],
+      "id": "25f2ea01-3c1e-411c-a1a3-e32a35f94971",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.4-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5.4-MINI"
+        },
+        "text": "Analiza cuidadosamente la imagen proporcionada.\n\nTu objetivo es extraer información útil para un tutor académico.\n\nIdentifica:\n- Qué representa la imagen.\n- Conceptos principales.\n- Relaciones entre conceptos.\n- Texto relevante.\n- Datos numéricos importantes.\n- Estructuras, procesos, diagramas o tablas.\n- Cualquier información que pueda ayudar a responder la pregunta del estudiante.\n\nNo inventes información que no esté presente en la imagen.\n\nDevuelve un análisis textual claro y estructurado que otro agente de IA pueda utilizar posteriormente para responder al estudiante.",
+        "inputType": "base64",
+        "binaryPropertyName": "image",
+        "simplify": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        2192,
+        2160
+      ],
+      "id": "6d976522-75fe-4c04-a3b8-9660c325511a",
+      "name": "Analyze image",
+      "credentials": {
+        "openAiApi": {
+          "id": "0MN9wHLA5mug4Twt",
+          "name": "OpenAi account Temporal"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Obtener input').first().json;\n\nlet imageAnalysis = $input.first().json.output[0].content[0].text;\nimageAnalysis = imageAnalysis.trim();\n\nreturn [\n  {\n    json: {\n      ...original,\n\n      imageAnalysis,\n      hasImageAnalysis: imageAnalysis.length > 0\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2384,
+        2160
+      ],
+      "id": "65e0d2b1-afa4-4e67-bb5f-9d4fff7de7ee",
+      "name": "Combinar analisis de imagen",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst dataUrl = $input.first().json.image.data_url;\n\nif (!dataUrl) {\n  throw new Error('No se encontró imageDataUrl.');\n}\n\nconst match = dataUrl.match(/^data:(image\\/[^;]+);base64,(.+)$/);\n\nif (!match) {\n  throw new Error(\n    'imageDataUrl no tiene un formato Data URL válido.'\n  );\n}\n\nconst mimeType = match[1];\nconst base64Data = match[2];\n\nreturn [\n  {\n    json: {\n      ...item.json,\n      imageBinaryProperty: 'image'\n    },\n    binary: {\n      image: {\n        data: base64Data,\n        mimeType,\n        fileName: item.json.imageName || 'image',\n        fileExtension: mimeType.split('/')[1] || 'bin'\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        2160
+      ],
+      "id": "1e876572-d46f-41dd-b709-1356718e2aa6",
+      "name": "Transform to binary",
+      "executeOnce": false
+    }
+  ],
+  "connections": {
+    "Webhook: Recibir Mensaje": {
+      "main": [
+        [
+          {
+            "node": "Obtener input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Contexto": {
+      "main": [
+        [
+          {
+            "node": "Construir Configuración del Agente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Configuración del Agente": {
+      "main": [
+        [
+          {
+            "node": "Switch: Modo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Modo": {
+      "main": [
+        [
+          {
+            "node": "Agente del Curso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agente del Curso",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generar Recursos Mermaid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente del Curso": {
+      "main": [
+        [
+          {
+            "node": "Formatear Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modelo de Chat": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente del Curso",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "rag_chat_tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente del Curso",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Memoria de Conversación": {
+      "ai_memory": [
+        [
+          {
+            "node": "Agente del Curso",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generar Recursos Mermaid": {
+      "main": [
+        [
+          {
+            "node": "Formatear Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Respuesta": {
+      "main": [
+        [
+          {
+            "node": "Responder al Estudiante",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtener input": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Preparar Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Transform to binary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Transform to binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze image": {
+      "main": [
+        [
+          {
+            "node": "Combinar analisis de imagen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combinar analisis de imagen": {
+      "main": [
+        [
+          {
+            "node": "Preparar Contexto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to binary": {
+      "main": [
+        [
+          {
+            "node": "Analyze image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "adb834fd7f053368d955cc6d48a200d094cd8565697438b4bb074702e6c47c9c"
+  }
+}
