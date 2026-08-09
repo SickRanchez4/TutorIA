@@ -184,7 +184,7 @@ const selectedCourseId = ref(null)
 const operationTypes = [
   { value: '', label: 'Todo', icon: 'mdi-view-grid-outline' },
   { value: 'chat_rag', label: 'Chat', icon: 'mdi-chat-processing-outline' },
-  { value: 'socratico', label: 'Socrático', icon: 'mdi-head-question-outline' },
+  { value: 'practicar', label: 'Práctica', icon: 'mdi-head-question-outline' },
   { value: 'resumen_sintetico', label: 'Recursos', icon: 'mdi-file-document-outline' },
 ]
 
@@ -293,7 +293,7 @@ function deltaClass(value) {
 }
 
 function operationLabel(value) {
-  return ({ chat_rag: 'Chat con material', socratico: 'Modo socrático', resumen_sintetico: 'Recurso sintético' })[value] || value
+  return ({ chat_rag: 'Chat con material', practicar: 'Modo práctica', resumen_sintetico: 'Recurso sintético' })[value] || value
 }
 
 function formatShortDate(value) {

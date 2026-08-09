@@ -22,7 +22,7 @@ from .academia import Curso, EstudianteCurso  # noqa: F401
 from .ia_chat import ConfiguracionIA, RagIngestionJob, SesionChat, MensajeChat  # noqa: F401
 
 # === Agenda, Notifications, Tracking ===
-from .agenda_notificaciones import ActividadAgenda, LogNotificacion, ConsumoTokens  # noqa: F401
+from .agenda_notificaciones import ActividadAgenda, LogNotificacion, PrecioModeloIA, ConsumoTokens  # noqa: F401
 
 # === Identity & Access ===
 from .user import User  # noqa: F401

@@ -15,7 +15,7 @@ class ConfiguracionIA(db.Model):
     curso_id = db.Column(db.Integer, db.ForeignKey('cursos.id', ondelete='CASCADE'), primary_key=True)
     system_prompt = db.Column(db.String(2000), nullable=False)
     temperatura = db.Column(db.Numeric(3, 2), default=0.2, nullable=False)
-    modos_permitidos = db.Column(db.String(200), default='chat,socratico,recursos', nullable=False)  # CSV: chat, socratico, recursos
+    modos_permitidos = db.Column(db.String(200), default='chat,practicar,recursos', nullable=False)  # CSV: chat, practicar, recursos
     extender_conocimiento = db.Column(db.Boolean, default=False, nullable=False)
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     
@@ -111,7 +111,8 @@ class MensajeChat(db.Model):
     rol = db.Column(db.String(20), nullable=False)  # 'user' or 'assistant'
     contenido = db.Column(db.String(3000), nullable=False)
     citas_contexto_json = db.Column(db.String(1000), nullable=True)  # Array of {archivo, pagina}
-    tipo_interaccion = db.Column(db.String(50), default='consulta', nullable=False)  # consulta, socratico, recurso_sintetico
+    imagen_nombre = db.Column(db.String(255), nullable=True)
+    tipo_interaccion = db.Column(db.String(50), default='consulta', nullable=False)  # consulta, practicar, recurso_sintetico
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
     
     def to_dict(self):
@@ -128,6 +129,7 @@ class MensajeChat(db.Model):
             'rol': self.rol,
             'contenido': self.contenido,
             'citas_contexto': citas,
+            'image_name': self.imagen_nombre,
             'tipo_interaccion': self.tipo_interaccion,
             'created_at': self.created_at.isoformat()
         }

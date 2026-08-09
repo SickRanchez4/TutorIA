@@ -93,8 +93,8 @@
                   <v-switch :model-value="modos.chat" color="primary" hide-details density="comfortable" @update:model-value="(val) => toggleModo('chat', val)" />
                 </div>
                 <div class="d-flex align-center justify-space-between mb-2">
-                  <span>Modo socrático</span>
-                  <v-switch :model-value="modos.socratico" color="primary" hide-details density="comfortable" @update:model-value="(val) => toggleModo('socratico', val)" />
+                  <span>Modo práctica</span>
+                  <v-switch :model-value="modos.practicar" color="primary" hide-details density="comfortable" @update:model-value="(val) => toggleModo('practicar', val)" />
                 </div>
                 <div class="d-flex align-center justify-space-between">
                   <span>Recursos sintéticos</span>
@@ -400,7 +400,7 @@ const showAltaAlumnoModal = ref(false)
 const alumnosActiveTab = ref('add')
 
 const agente = reactive({ system_prompt: '', temperatura: 0.2, extender_conocimiento: false })
-const modos = reactive({ chat: true, socratico: true, recursos: true })
+const modos = reactive({ chat: true, practicar: true, recursos: true })
 const conocimientoFiles = ref([])
 const uploadingConocimiento = ref(false)
 const conocimiento = ref(null)
@@ -643,7 +643,7 @@ async function saveAgente() {
 function syncModosFromAgente() {
   const activos = agente.modos_permitidos || []
   modos.chat = activos.includes('chat')
-  modos.socratico = activos.includes('socratico')
+  modos.practicar = activos.includes('practicar')
   modos.recursos = activos.includes('recursos')
 }
 
