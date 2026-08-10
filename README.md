@@ -129,7 +129,7 @@ docker compose -f docker-compose.yml -f docker-compose.production.yml ps
 docker compose -f docker-compose.yml -f docker-compose.production.yml logs -f
 ```
 
-Caddy deja el frontend interno y publica exclusivamente HTTP/HTTPS. Redirige el tráfico a Nginx del servicio `frontend`, que a su vez entrega la SPA y reenvía `/api/*` al backend. Los PDF de RAG quedan en el volumen Docker `rag_uploads`, persistente entre reinicios y actualizaciones.
+Caddy deja el frontend interno y publica exclusivamente HTTP/HTTPS. Redirige el tráfico a Nginx del servicio `frontend`, que a su vez entrega la SPA y reenvía `/api/*` al backend. Los archivos RAG se guardan solo de forma temporal dentro del contenedor backend y se eliminan cuando este se reemplaza o se recrea.
 
 ### 4. Verificar
 
@@ -152,12 +152,12 @@ docker compose -f docker-compose.yml -f docker-compose.production.yml up --build
 docker image prune -f
 ```
 
-No ejecute `docker compose down -v` durante una actualización: elimina los volúmenes persistentes, incluidos los PDF usados por RAG y los certificados de Caddy.
+No ejecute `docker compose down -v` durante una actualización: elimina los volúmenes persistentes de Caddy y obligará a emitir nuevamente los certificados HTTPS.
 
 ## Operación de la base de conocimiento RAG
 
 Antes de desplegar esta versión, asegúrese de que [database/script-tutoria.sql](database/script-tutoria.sql) haya sido ejecutado una vez, ya que incluye la tabla de trabajos de ingestión RAG y sus índices para el historial de cargas, estado, documentos recibidos y métricas devueltas por n8n.
 
-El detalle de cada curso muestra un resumen compacto de documentos indexados, fecha de indexación y trabajos que requieren atención. Los PDF se conservan en el volumen `rag_uploads` para permitir reintentos; en un despliegue con varias réplicas sustituya ese volumen por almacenamiento de objetos o un volumen compartido.
+El detalle de cada curso muestra un resumen compacto de documentos indexados, fecha de indexación y trabajos que requieren atención. Los PDF se conservan únicamente mientras viva el contenedor backend; el historial y las métricas permanecen registrados en SQL Server.
 
 Para eliminar un PDF específico o vaciar la base de conocimiento de un curso, importe y active [automation/workflows/knowledge-index-admin.json](automation/workflows/knowledge-index-admin.json) en n8n. Configure `N8N_KNOWLEDGE_ADMIN_WEBHOOK_URL` con su única URL de producción. El flujo recibe `action` con `delete_document` o `clear_course`, junto con el curso, institución y —solo para eliminar un PDF— `archivo`. El agente elimina los vectores en Pinecone y el backend actualiza después su historial local.

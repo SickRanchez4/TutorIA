@@ -13,8 +13,6 @@ services:
       RAG_UPLOAD_STORAGE_PATH: /data/rag-uploads
     expose:
       - "5000"
-    volumes:
-      - rag_uploads:/data/rag-uploads
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz')"]
@@ -41,6 +39,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-volumes:
-  rag_uploads:
