@@ -1,4 +1,10 @@
 services:
+  frontend:
+    ports:
+      - "127.0.0.1:8080:80"
+    expose:
+      - "80"
+
   caddy:
     image: caddy:2.10-alpine
     depends_on:

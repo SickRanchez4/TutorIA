@@ -9,7 +9,6 @@ services:
       FLASK_ENV: production
       FLASK_DEBUG: "False"
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
       RAG_UPLOAD_STORAGE_PATH: /data/rag-uploads
     expose:
       - "5000"
@@ -31,7 +30,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "${APP_PORT:-8080}:80"
+      - "${APP_PORT:-127.0.0.1:8080}:80"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]

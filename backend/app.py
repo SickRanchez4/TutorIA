@@ -143,11 +143,13 @@ def create_app(config_name=None):
     )
 
     @app.get('/healthz')
+    @limiter.exempt
     def health_check():
         """Liveness probe: confirma que el proceso Flask está disponible."""
         return jsonify({'status': 'ok'}), 200
 
     @app.get('/readyz')
+    @limiter.exempt
     def readiness_check():
         """Readiness probe: confirma la conectividad con SQL Server."""
         try:
