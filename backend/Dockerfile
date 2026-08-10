@@ -10,11 +10,11 @@ WORKDIR /app
 
 # SQL Server driver required by pyodbc and SQLAlchemy's mssql+pyodbc dialect.
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y curl gnupg unixodbc unixodbc-dev \
-    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
-    && curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list \
-       | sed 's#^deb #deb [signed-by=/usr/share/keyrings/microsoft-prod.gpg] #' \
-       > /etc/apt/sources.list.d/microsoft-prod.list \
+     && apt-get install --no-install-recommends -y ca-certificates curl unixodbc unixodbc-dev \
+     && curl -fsSL -o /tmp/packages-microsoft-prod.deb \
+         https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
+     && dpkg -i /tmp/packages-microsoft-prod.deb \
+     && rm /tmp/packages-microsoft-prod.deb \
     && apt-get update \
     && ACCEPT_EULA=Y apt-get install --no-install-recommends -y msodbcsql17 \
     && rm -rf /var/lib/apt/lists/*

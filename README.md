@@ -65,9 +65,98 @@ docker compose up --build -d
 - El backend utiliza ODBC Driver 17 para SQL Server dentro de su imagen Docker.
 - Para límites de tasa persistentes entre réplicas, configure Redis como almacenamiento de Flask-Limiter antes de escalar el backend.
 
+## Despliegue en Cloud Server DonWeb
+
+La instancia Ubuntu 24.04 con Docker y Docker Compose ejecuta los dos servicios de la aplicación definidos en [docker-compose.yml](docker-compose.yml). Para producción se añade [docker-compose.production.yml](docker-compose.production.yml), que incorpora Caddy como proxy inverso y obtiene/renueva automáticamente el certificado HTTPS.
+
+### 1. Preparar el servidor y el dominio
+
+1. En el panel de DonWeb, cree el Cloud Server con la imagen Docker/Ubuntu 24.04 y anote su IP pública. DonWeb ofrece acceso `root`, consola web, firewall virtual y Docker Compose preinstalado.
+2. En el proveedor DNS, cree un registro `A` para el dominio de la aplicación (por ejemplo, `app.tudominio.com`) apuntando a la IP pública del Cloud Server. Espere a que resuelva antes de iniciar Caddy; HTTPS requiere que el dominio llegue al servidor por los puertos 80 y 443.
+3. En el firewall virtual de DonWeb permita TCP `22`, `80` y `443`; no exponga `5000` ni `8080` a Internet.
+4. Conéctese por SSH y confirme las herramientas instaladas:
+
+```bash
+ssh root@IP_DEL_SERVIDOR
+docker --version
+docker compose version
+```
+
+5. Opcionalmente, configure el firewall del sistema como segunda capa:
+
+```bash
+ufw allow OpenSSH
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw enable
+```
+
+### 2. Copiar el proyecto y configurar secretos
+
+En el servidor, clone el repositorio en una ubicación persistente:
+
+```bash
+git clone URL_DEL_REPOSITORIO /opt/tutoria
+cd /opt/tutoria
+cp .env.docker.example .env.docker
+chmod 600 .env.docker
+```
+
+Edite `.env.docker` con valores reales. Para producción configure al menos:
+
+```dotenv
+APP_PORT=127.0.0.1:8080
+DOMAIN=app.tudominio.com
+FRONTEND_URL=https://app.tudominio.com
+JWT_SECRET_KEY=secreto-aleatorio-largo
+DATABASE_URL=mssql+pyodbc://USUARIO:CONTRASENA@HOST:1433/BASE_DE_DATOS?driver=ODBC+Driver+17+for+SQL+Server
+N8N_CHAT_WEBHOOK_URL=https://tu-n8n.example/webhook/course-chat
+N8N_EMBEDDINGS_WEBHOOK_URL=https://tu-n8n.example/webhook/upload-knowledge
+N8N_KNOWLEDGE_ADMIN_WEBHOOK_URL=https://tu-n8n.example/webhook/knowledge-admin
+```
+
+Use URLs de producción de n8n (`/webhook/...`), nunca `/webhook-test/...`. Si la contraseña de SQL Server contiene caracteres reservados (`@`, `:`, `/` o `?`), codifíquelos en formato URL. Verifique además que el firewall de SQL Server permita conexiones desde la IP pública del Cloud Server.
+
+### 3. Aplicar migraciones y desplegar
+
+Antes de publicar la versión, ejecute sobre SQL Server el script principal [database/script-tutoria.sql](database/script-tutoria.sql) para aplicar el esquema base y los ajustes de compatibilidad incluidos en ese archivo. Luego aplique [database/populate-tutoria.sql](database/populate-tutoria.sql) para cargar los datos iniciales.
+
+Después, construya e inicie los contenedores desde `/opt/tutoria`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.production.yml up --build -d
+docker compose -f docker-compose.yml -f docker-compose.production.yml ps
+docker compose -f docker-compose.yml -f docker-compose.production.yml logs -f
+```
+
+Caddy deja el frontend interno y publica exclusivamente HTTP/HTTPS. Redirige el tráfico a Nginx del servicio `frontend`, que a su vez entrega la SPA y reenvía `/api/*` al backend. Los PDF de RAG quedan en el volumen Docker `rag_uploads`, persistente entre reinicios y actualizaciones.
+
+### 4. Verificar
+
+Cuando el certificado se haya emitido, compruebe:
+
+```bash
+curl -I https://app.tudominio.com/healthz
+curl -I https://app.tudominio.com/api/healthz
+curl -I https://app.tudominio.com/api/readyz
+```
+
+`/healthz` confirma el frontend, `/api/healthz` el proceso Flask y `/api/readyz` también la conexión a SQL Server. Si el certificado no se emite, confirme primero DNS, puertos 80/443 y los logs del contenedor `caddy`.
+
+### Actualizar la aplicación
+
+```bash
+cd /opt/tutoria
+git pull
+docker compose -f docker-compose.yml -f docker-compose.production.yml up --build -d
+docker image prune -f
+```
+
+No ejecute `docker compose down -v` durante una actualización: elimina los volúmenes persistentes, incluidos los PDF usados por RAG y los certificados de Caddy.
+
 ## Operación de la base de conocimiento RAG
 
-Antes de desplegar esta versión, aplique una vez la migración [database/migrations/20260731_rag_ingestion_jobs.sql](database/migrations/20260731_rag_ingestion_jobs.sql). Crea el historial de cargas, su estado, los documentos recibidos y las métricas devueltas por n8n.
+Antes de desplegar esta versión, asegúrese de que [database/script-tutoria.sql](database/script-tutoria.sql) haya sido ejecutado una vez, ya que incluye la tabla de trabajos de ingestión RAG y sus índices para el historial de cargas, estado, documentos recibidos y métricas devueltas por n8n.
 
 El detalle de cada curso muestra un resumen compacto de documentos indexados, fecha de indexación y trabajos que requieren atención. Los PDF se conservan en el volumen `rag_uploads` para permitir reintentos; en un despliegue con varias réplicas sustituya ese volumen por almacenamiento de objetos o un volumen compartido.
 
