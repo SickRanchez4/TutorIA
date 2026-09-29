@@ -128,16 +128,6 @@ export const coordinadorService = {
     
     return api.get('/coordinador/analiticas/consumo', { params })
   },
-  getConsumoDetalle(params = {}) {
-    return api.get('/coordinador/analiticas/consumo/detalle', {
-      params: {
-        days: params.days || 30,
-        tipo: params.tipo || undefined,
-        user: params.user || undefined,
-        limit: params.limit || 200,
-      }
-    })
-  },
 
   // Perfil del usuario actual
   getProfile() {

@@ -43,9 +43,9 @@ export const estudianteService = {
   },
 
   // Agenda
-  getAgenda(grupoMateriaId = null) {
+  getAgenda(cursoId = null) {
     const params = {}
-    if (grupoMateriaId) params.grupo_materia_id = grupoMateriaId
+    if (cursoId) params.curso_id = cursoId
     return api.get('/estudiante/agenda', { params })
   },
 

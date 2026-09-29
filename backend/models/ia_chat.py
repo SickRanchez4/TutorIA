@@ -120,7 +120,7 @@ class MensajeChat(db.Model):
         if self.citas_contexto_json:
             try:
                 citas = json.loads(self.citas_contexto_json)
-            except:
+            except (TypeError, ValueError):
                 citas = []
         
         return {

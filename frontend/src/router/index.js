@@ -1,15 +1,16 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import Login from '../views/Login.vue'
-import SuperAdminDashboard from '../views/SuperAdminDashboard.vue'
-import EstudianteDashboard from '../views/EstudianteDashboard.vue'
-import CoordinadorLayout from '../views/coordinador/CoordinadorLayout.vue'
-import CursosListView from '../views/coordinador/CursosListView.vue'
-import CursoDetalleView from '../views/coordinador/CursoDetalleView.vue'
-import InstitucionConfigView from '../views/coordinador/InstitucionConfigView.vue'
-import AnalyticsGlobalView from '../views/coordinador/AnalyticsGlobalView.vue'
-import CuentasView from '../views/coordinador/CuentasView.vue'
-import ProfileView from '../views/coordinador/ProfileView.vue'
+
+const Login = () => import('../views/Login.vue')
+const SuperAdminDashboard = () => import('../views/SuperAdminDashboard.vue')
+const EstudianteDashboard = () => import('../views/EstudianteDashboard.vue')
+const CoordinadorLayout = () => import('../views/coordinador/CoordinadorLayout.vue')
+const CursosListView = () => import('../views/coordinador/CursosListView.vue')
+const CursoDetalleView = () => import('../views/coordinador/CursoDetalleView.vue')
+const InstitucionConfigView = () => import('../views/coordinador/InstitucionConfigView.vue')
+const AnalyticsGlobalView = () => import('../views/coordinador/AnalyticsGlobalView.vue')
+const CuentasView = () => import('../views/coordinador/CuentasView.vue')
+const ProfileView = () => import('../views/coordinador/ProfileView.vue')
 
 const routes = [
   {
@@ -61,39 +62,22 @@ const router = createRouter({
 })
 
 // Navigation guards
-router.beforeEach((to, from, next) => {
+router.beforeEach((to) => {
   const authStore = useAuthStore()
-  
-  // Check if route requires authentication
+
   if (to.meta.requiresAuth) {
     if (!authStore.isAuthenticated) {
-      next('/login')
-      return
+      return '/login'
     }
-    
-    // Check role-based access
+
     if (to.meta.role && authStore.user?.role !== to.meta.role) {
-      // Redirect to appropriate dashboard based on user role
-      if (authStore.user?.role === 'super_admin') {
-        next('/super-admin')
-      } else if (authStore.user?.role === 'coordinador') {
-        next('/coordinador')
-      } else if (authStore.user?.role === 'estudiante') {
-        next('/estudiante')
-      } else {
-        next('/login')
-      }
-      return
+      return authStore.dashboardRoute
     }
   }
-  
-  // Redirect authenticated users away from login
+
   if (to.meta.requiresGuest && authStore.isAuthenticated) {
-    next(authStore.dashboardRoute)
-    return
+    return authStore.dashboardRoute
   }
-  
-  next()
 })
 
 export default router

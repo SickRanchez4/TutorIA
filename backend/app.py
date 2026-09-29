@@ -11,6 +11,7 @@ from flask_jwt_extended import JWTManager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from sqlalchemy import text
+from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db
 from config import config
 
@@ -49,18 +50,21 @@ class JsonLogFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+class TutoriaJsonHandler(logging.StreamHandler):
+    """Marker subclass used to avoid installing duplicate JSON handlers."""
+
+
 def configure_logging(app):
     """Configura logs estructurados a stdout sin modificar los endpoints."""
     logger = app.logger
     logger.setLevel(os.getenv('LOG_LEVEL', 'INFO').upper())
     logger.propagate = False
 
-    if any(getattr(handler, '_tutoria_json_handler', False) for handler in logger.handlers):
+    if any(isinstance(handler, TutoriaJsonHandler) for handler in logger.handlers):
         return
 
     logger.handlers.clear()
-    handler = logging.StreamHandler(sys.stdout)
-    handler._tutoria_json_handler = True
+    handler = TutoriaJsonHandler(sys.stdout)
     handler.setFormatter(JsonLogFormatter())
     logger.addHandler(handler)
 
@@ -112,8 +116,21 @@ def create_app(config_name=None):
     if config_name is None:
         config_name = os.getenv('FLASK_ENV', 'development')
     
+    if config_name not in config:
+        valid_names = ', '.join(sorted(config))
+        raise RuntimeError(f'Configuración Flask inválida: {config_name}. Opciones: {valid_names}.')
+
     app = Flask(__name__)
     app.config.from_object(config[config_name])
+    trusted_proxy_count = int(os.getenv('TRUSTED_PROXY_COUNT', '0'))
+    if trusted_proxy_count > 0:
+        app.wsgi_app = ProxyFix(
+            app.wsgi_app,
+            x_for=trusted_proxy_count,
+            # Nginx is the direct trusted hop and replaces these two headers.
+            x_proto=1,
+            x_host=1,
+        )
     configure_logging(app)
     register_request_logging(app)
 
@@ -174,4 +191,4 @@ def create_app(config_name=None):
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(debug=True)
+    app.run()

@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 import os
+from pathlib import Path
+import shutil
 from typing import Iterable
 
 import requests
@@ -13,7 +15,8 @@ from werkzeug.utils import secure_filename
 from models import Curso, RagIngestionJob, db
 
 
-_in_memory_job_files: dict[str, list[tuple[str, bytes]]] = {}
+MAX_FILES_PER_JOB = 10
+MAX_PDF_BYTES = 20 * 1024 * 1024
 
 
 class RagIngestionError(Exception):
@@ -26,6 +29,17 @@ class RagIngestionError(Exception):
 
 def _utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _storage_root() -> Path:
+    configured = os.getenv('RAG_UPLOAD_STORAGE_PATH', '').strip()
+    root = Path(configured) if configured else Path(__file__).resolve().parents[1] / 'storage' / 'rag_uploads'
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _job_directory(job_id: str) -> Path:
+    return _storage_root() / job_id
 
 
 def _roles(user) -> set[str]:
@@ -59,7 +73,11 @@ def _unique_filename(name: str, used_names: set[str]) -> str:
 
 
 def create_ingestion_job(user, curso: Curso, uploaded_files: Iterable[FileStorage]) -> RagIngestionJob:
-    """Create a queued job and record the file metadata without persisting PDFs on disk."""
+    """Create a queued job and persist its source PDFs in temporary shared storage."""
+    uploaded_files = list(uploaded_files)
+    if len(uploaded_files) > MAX_FILES_PER_JOB:
+        raise RagIngestionError(f'Solo se permiten {MAX_FILES_PER_JOB} archivos por carga.', 400)
+
     job = RagIngestionJob(
         institucion_id=curso.institucion_id,
         curso_id=curso.id,
@@ -79,9 +97,13 @@ def create_ingestion_job(user, curso: Curso, uploaded_files: Iterable[FileStorag
             if not uploaded_file or not uploaded_file.filename:
                 continue
             filename = _unique_filename(uploaded_file.filename, used_names)
-            content = uploaded_file.read()
+            content = uploaded_file.stream.read(MAX_PDF_BYTES + 1)
             if not content:
                 raise RagIngestionError(f'El archivo "{uploaded_file.filename}" está vacío.', 400)
+            if len(content) > MAX_PDF_BYTES:
+                raise RagIngestionError(f'El archivo "{uploaded_file.filename}" supera los 20 MB.', 413)
+            if not content.lstrip().startswith(b'%PDF-'):
+                raise RagIngestionError(f'El archivo "{uploaded_file.filename}" no es un PDF válido.', 400)
             documents.append({'archivo': filename, 'tamano_bytes': len(content)})
             cached_files.append((filename, content))
     except Exception:
@@ -93,17 +115,31 @@ def create_ingestion_job(user, curso: Curso, uploaded_files: Iterable[FileStorag
         raise RagIngestionError('No se proporcionó ningún archivo PDF válido.', 400)
 
     job.documentos_json = json.dumps(documents, ensure_ascii=False)
-    _in_memory_job_files[job.id] = cached_files
+    job_directory = _job_directory(job.id)
+    job_directory.mkdir(parents=True, exist_ok=False)
+    try:
+        for filename, content in cached_files:
+            (job_directory / filename).write_bytes(content)
+    except Exception:
+        shutil.rmtree(job_directory, ignore_errors=True)
+        db.session.rollback()
+        raise
     db.session.commit()
     return job
 
 
 def _job_files(job: RagIngestionJob) -> list[tuple[str, tuple[str, bytes, str]]]:
-    """Build an in-memory multipart payload from the cached uploaded bytes."""
-    cached_files = _in_memory_job_files.get(job.id, [])
-    if not cached_files:
+    """Build a multipart payload from the job's temporary shared storage."""
+    job_directory = _job_directory(job.id)
+    stored_files = [
+        job_directory / secure_filename(str(document.get('archivo') or ''))
+        for document in job.documents()
+        if secure_filename(str(document.get('archivo') or ''))
+    ]
+    stored_files = [path for path in stored_files if path.is_file()]
+    if not stored_files:
         raise RagIngestionError('El trabajo no contiene archivos para procesar.', 409)
-    payload = [('files', (filename, content, 'application/pdf')) for filename, content in cached_files]
+    payload = [('files', (path.name, path.read_bytes(), 'application/pdf')) for path in stored_files]
     return payload
 
 
@@ -155,13 +191,21 @@ def dispatch_ingestion_job(job: RagIngestionJob) -> RagIngestionJob:
     except ValueError:
         processor_response = {}
 
+    if isinstance(processor_response, list):
+        processor_response = processor_response[0] if processor_response else {}
+    if not isinstance(processor_response, dict):
+        processor_response = {}
+    nested_response = processor_response.get('data')
+    metrics = nested_response if isinstance(nested_response, dict) else processor_response
+
     job.estado = 'completed'
-    job.archivos_procesados = int(processor_response.get('archivos_procesados') or len(job.documents()))
-    job.chunks_indexados = int(processor_response.get('chunks_indexados') or 0)
+    job.archivos_procesados = int(metrics.get('archivos_procesados') or len(job.documents()))
+    job.chunks_indexados = int(metrics.get('chunks_indexados') or 0)
     job.respuesta_procesador_json = json.dumps(processor_response, ensure_ascii=False, default=str)
     job.error_message = None
     job.completed_at = _utcnow()
     db.session.commit()
+    _remove_local_job_files(job)
     return job
 
 
@@ -173,8 +217,8 @@ def retry_ingestion_job(user, job_id: str) -> RagIngestionJob:
     curso = get_managed_course(user, job.curso_id)
     if not curso or str(curso.institucion_id) != str(job.institucion_id):
         raise RagIngestionError('No tienes permisos sobre este trabajo de indexación.', 403)
-    if job.estado == 'processing':
-        raise RagIngestionError('El trabajo ya se está procesando.', 409)
+    if job.estado not in {'failed', 'unknown'}:
+        raise RagIngestionError('Solo se pueden reintentar trabajos fallidos o de estado desconocido.', 409)
 
     job.intento += 1
     return dispatch_ingestion_job(job)
@@ -194,18 +238,15 @@ def _call_knowledge_admin_webhook(action: str, payload: dict) -> None:
 
 
 def _remove_local_job_files(job: RagIngestionJob, filenames: set[str] | None = None) -> None:
-    """Clear cached bytes for a job once the UI no longer needs them."""
-    cached_files = _in_memory_job_files.pop(job.id, None)
-    if not cached_files:
-        return
+    """Clear temporary source files once they are no longer needed."""
+    job_directory = _job_directory(job.id)
     if filenames is None:
+        shutil.rmtree(job_directory, ignore_errors=True)
         return
-    remaining = [(filename, content) for filename, content in cached_files if filename not in filenames]
-    if remaining:
-        _in_memory_job_files[job.id] = remaining
-    else:
-        _in_memory_job_files.pop(job.id, None)
-    return
+    for filename in filenames:
+        (job_directory / secure_filename(filename)).unlink(missing_ok=True)
+    if job_directory.is_dir() and not any(job_directory.iterdir()):
+        job_directory.rmdir()
 
 
 def remove_indexed_document(user, curso_id: int, filename: str) -> None:

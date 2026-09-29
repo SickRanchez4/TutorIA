@@ -26,29 +26,5 @@ export const authService = {
     } catch (error) {
       throw error.response?.data || { message: 'Error de conexión' }
     }
-  },
-
-  async getProfessors() {
-    try {
-      return await api.get('/auth/professors')
-    } catch (error) {
-      throw error.response?.data || { message: 'Error de conexión' }
-    }
-  },
-
-  async toggleProfessorStatus(professorId) {
-    try {
-      return await api.patch(`/auth/professors/${professorId}/toggle-status`)
-    } catch (error) {
-      throw error.response?.data || { message: 'Error de conexión' }
-    }
-  },
-
-  async deleteProfessor(professorId) {
-    try {
-      return await api.delete(`/auth/professors/${professorId}`)
-    } catch (error) {
-      throw error.response?.data || { message: 'Error de conexión' }
-    }
   }
 }

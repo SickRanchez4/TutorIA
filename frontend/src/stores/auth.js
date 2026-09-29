@@ -28,6 +28,19 @@ export const useAuthStore = defineStore('auth', () => {
     return userObj
   }
 
+  const hasValidStoredToken = (storedToken) => {
+    try {
+      const encodedPayload = storedToken.split('.')[1]
+      if (!encodedPayload) return false
+
+      const base64 = encodedPayload.replace(/-/g, '+').replace(/_/g, '/')
+      const payload = JSON.parse(atob(base64))
+      return !payload?.exp || payload.exp * 1000 > Date.now()
+    } catch {
+      return false
+    }
+  }
+
   const login = async (credentials) => {
     isLoading.value = true
     error.value = ''
@@ -66,23 +79,14 @@ export const useAuthStore = defineStore('auth', () => {
 
     if (storedToken && storedUser) {
       try {
-        // Verify token hasn't expired
-        let tokenValid = true
-        try {
-          const payload = JSON.parse(atob(storedToken.split('.')[1] || ''))
-          if (payload?.exp && payload.exp * 1000 < Date.now()) tokenValid = false
-        } catch (e) {
-          // Ignore parse errors; assume token is valid
-        }
-
-        if (tokenValid) {
+        if (hasValidStoredToken(storedToken)) {
           token.value = storedToken
           const parsedUser = normalizeUserName(JSON.parse(storedUser))
           user.value = parsedUser
         } else {
           logout()
         }
-      } catch (err) {
+      } catch {
         logout()
       }
     }

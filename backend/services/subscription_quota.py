@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func
 
-from models import db, ConsumoTokens
+from models import db, ConsumoTokens, User
 from models.institucion import Suscripcion
 
 
@@ -64,3 +64,26 @@ def request_is_allowed(institucion_id, reservation_tokens, reference=None):
     if not summary['is_active']:
         return False, summary
     return summary['tokens_disponibles'] >= reservation_tokens, summary
+
+
+def account_creation_allowed(institucion_id, reference=None):
+    """Check subscription validity and the plan's active-account capacity."""
+    now = reference or utcnow_naive()
+    subscription = Suscripcion.query.filter_by(institucion_id=institucion_id).first()
+    if not subscription or not subscription.plan:
+        return False, 'La institución no tiene una suscripción configurada'
+    if not (
+        subscription.is_active
+        and subscription.fecha_inicio <= now
+        and subscription.fecha_fin >= now
+        and subscription.plan.is_active
+    ):
+        return False, 'La suscripción de la institución no está activa o vigente'
+
+    limit = subscription.plan.max_cuentas
+    if limit is None:
+        return True, None
+    active_accounts = User.query.filter_by(institucion_id=institucion_id, is_active=True).count()
+    if active_accounts >= limit:
+        return False, 'Límite de cuentas alcanzado para el plan asignado'
+    return True, None

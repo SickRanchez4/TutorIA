@@ -17,6 +17,9 @@ class Config:
         )
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    MAX_CONTENT_LENGTH = int(os.getenv('MAX_CONTENT_LENGTH', str(64 * 1024 * 1024)))
+    RATELIMIT_STORAGE_URI = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')
+    ALLOW_PUBLIC_REGISTRATION = os.getenv('ALLOW_PUBLIC_REGISTRATION', 'false').strip().lower() == 'true'
 
     @staticmethod
     def _build_mssql_uri():
