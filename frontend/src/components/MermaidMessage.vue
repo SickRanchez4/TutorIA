@@ -3,10 +3,7 @@
     <template v-for="(part, index) in parts" :key="index">
       <p v-if="part.type === 'text'" class="mermaid-message__text">{{ part.value }}</p>
       <div v-else class="mermaid-message__diagram" :aria-label="diagramLabel(part.value)">
-        <div v-if="renderErrors[index]" class="mermaid-message__error">
-          No se pudo renderizar este diagrama.
-        </div>
-        <div v-else class="mermaid-message__preview">
+        <div class="mermaid-message__preview">
           <button
             type="button"
             class="mermaid-message__expand-button"
@@ -20,12 +17,13 @@
             <v-progress-circular indeterminate color="primary" size="24" width="3"></v-progress-circular>
             Generando diagrama...
           </div>
+          <!-- eslint-disable-next-line vue/no-v-html -- SVG sanitizado en prepareSvg() -->
           <div v-else class="mermaid-message__svg" v-html="renderedSvgs[index]"></div>
         </div>
       </div>
     </template>
 
-    <v-dialog v-model="expanded" max-width="1200" scrollable>
+    <v-dialog v-model="expanded" width="calc(100% - 24px)" max-width="1200" scrollable>
       <v-card class="mermaid-message__dialog position-relative" rounded="xl">
         <v-btn
           icon="mdi-close"
@@ -35,6 +33,7 @@
           @click="expanded = false"
         ></v-btn>
         <v-card-text class="mermaid-message__dialog-content">
+          <!-- eslint-disable-next-line vue/no-v-html -- SVG sanitizado en prepareSvg() -->
           <div class="mermaid-message__expanded-svg" v-html="expandedSvg"></div>
         </v-card-text>
       </v-card>
@@ -44,8 +43,9 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import mermaid from 'mermaid'
+import DOMPurify from 'dompurify'
 
+let mermaid
 let mermaidInitialized = false
 let nextDiagramId = 0
 
@@ -56,7 +56,6 @@ const props = defineProps({
   },
 })
 
-const renderErrors = ref({})
 const renderedSvgs = ref({})
 const expanded = ref(false)
 const expandedSvg = ref('')
@@ -71,7 +70,7 @@ const parts = computed(() => {
   while ((match = matcher.exec(props.content)) !== null) {
     const text = props.content.slice(lastIndex, match.index).trim()
     if (text) result.push({ type: 'text', value: text })
-    result.push({ type: 'diagram', value: cleanMermaidSource(match[1]) })
+    result.push({ type: 'diagram', value: match[1].trim() })
     lastIndex = matcher.lastIndex
   }
 
@@ -80,21 +79,13 @@ const parts = computed(() => {
   return result.length ? result : [{ type: 'text', value: props.content }]
 })
 
-function cleanMermaidSource(source) {
-  return String(source || '')
-    .replace(/^\uFEFF/, '')
-    .trim()
-    .replace(/^```mermaid\s*\r?\n/i, '')
-    .replace(/\r?\n```\s*$/, '')
-    .trim()
-}
-
 const diagramLabel = () => 'Diagrama generado para el recurso de estudio'
 
 function prepareSvg(svg) {
   // Mermaid genera SVG sin fondo. Se fija aquí para aislar cada gráfico de los
   // estilos y colores del cuadro de chat que lo contiene.
-  return svg.replace(/<svg\b([^>]*)>/i, '<svg$1 style="background:#ffffff; color:#172033; display:block; max-width:100%; height:auto; margin:0 auto;">')
+  const styledSvg = svg.replace(/<svg\b([^>]*)>/i, '<svg$1 style="background:#ffffff; color:#172033; display:block; max-width:100%; height:auto; margin:0 auto;">')
+  return DOMPurify.sanitize(styledSvg, { USE_PROFILES: { svg: true, svgFilters: true } })
 }
 
 function expandDiagram(index) {
@@ -104,29 +95,12 @@ function expandDiagram(index) {
   expanded.value = true
 }
 
-async function renderDiagrams() {
-  const sequence = ++renderSequence
-  renderErrors.value = {}
-  renderedSvgs.value = {}
-
-  for (const [index, part] of parts.value.entries()) {
-    if (part.type !== 'diagram') continue
-
-    try {
-      const source = cleanMermaidSource(part.value)
-      const renderId = `tutoria-mermaid-${Date.now()}-${++nextDiagramId}-${index}`
-      const { svg } = await mermaid.render(renderId, source)
-      if (sequence === renderSequence) {
-        renderedSvgs.value = { ...renderedSvgs.value, [index]: prepareSvg(svg) }
-      }
-    } catch (error) {
-      console.error('No se pudo renderizar el diagrama Mermaid.', error)
-      if (sequence === renderSequence) renderErrors.value = { ...renderErrors.value, [index]: true }
-    }
+async function ensureMermaid() {
+  if (!mermaid) {
+    const module = await import('mermaid')
+    mermaid = module.default
   }
-}
 
-onMounted(() => {
   if (!mermaidInitialized) {
     mermaid.initialize({
       startOnLoad: false,
@@ -134,35 +108,55 @@ onMounted(() => {
       securityLevel: 'strict',
       suppressErrorRendering: true,
       themeVariables: {
-      background: '#ffffff',
-      primaryColor: '#e8f0ff',
-      primaryTextColor: '#172033',
-      primaryBorderColor: '#315da8',
-      secondaryColor: '#eef7f2',
-      secondaryTextColor: '#172033',
-      secondaryBorderColor: '#3f8a65',
-      tertiaryColor: '#fff5df',
-      tertiaryTextColor: '#172033',
-      tertiaryBorderColor: '#b47516',
-      lineColor: '#53657d',
-      textColor: '#172033',
-      mainBkg: '#ffffff',
-      nodeBorder: '#315da8',
-      clusterBkg: '#f7faff',
-      clusterBorder: '#b7c9e7',
-      titleColor: '#172033',
-      edgeLabelBackground: '#ffffff',
-      timelineSectionBkgColor: '#f7faff',
-      timelineSectionBkgColor2: '#ffffff',
-      timelineTaskBkgColor: '#e8f0ff',
-      timelineTaskTextColor: '#172033',
-      timelineTaskBorderColor: '#315da8',
+        background: '#ffffff',
+        primaryColor: '#e8f0ff',
+        primaryTextColor: '#172033',
+        primaryBorderColor: '#315da8',
+        secondaryColor: '#eef7f2',
+        secondaryTextColor: '#172033',
+        secondaryBorderColor: '#3f8a65',
+        tertiaryColor: '#fff5df',
+        tertiaryTextColor: '#172033',
+        tertiaryBorderColor: '#b47516',
+        lineColor: '#53657d',
+        textColor: '#172033',
+        mainBkg: '#ffffff',
+        nodeBorder: '#315da8',
+        clusterBkg: '#f7faff',
+        clusterBorder: '#b7c9e7',
+        titleColor: '#172033',
+        edgeLabelBackground: '#ffffff',
+        timelineSectionBkgColor: '#f7faff',
+        timelineSectionBkgColor2: '#ffffff',
+        timelineTaskBkgColor: '#e8f0ff',
+        timelineTaskTextColor: '#172033',
+        timelineTaskBorderColor: '#315da8',
       },
     })
     mermaidInitialized = true
   }
-  renderDiagrams()
-})
+}
+
+async function renderDiagrams() {
+  const sequence = ++renderSequence
+  renderedSvgs.value = {}
+
+  if (!parts.value.some((part) => part.type === 'diagram')) return
+
+  await ensureMermaid()
+
+  for (const [index, part] of parts.value.entries()) {
+    if (part.type !== 'diagram') continue
+
+    const renderId = `tutoria-mermaid-${Date.now()}-${++nextDiagramId}-${index}`
+    const { svg } = await mermaid.render(renderId, part.value)
+    if (sequence === renderSequence) {
+      renderedSvgs.value = { ...renderedSvgs.value, [index]: prepareSvg(svg) }
+    }
+  }
+}
+
+onMounted(renderDiagrams)
 
 watch(() => props.content, renderDiagrams)
 onUnmounted(() => { renderSequence += 1 })
@@ -309,5 +303,12 @@ onUnmounted(() => { renderSequence += 1 })
 .mermaid-message__error {
   color: rgb(var(--v-theme-error));
   font-size: 0.8125rem;
+}
+
+@media (max-width: 599px) {
+  .mermaid-message__diagram { border-radius: 12px; }
+  .mermaid-message__preview { min-height: 100px; padding: 16px 10px; }
+  .mermaid-message__dialog-content { padding: 48px 12px 16px; }
+  .mermaid-message__expanded-svg { min-width: 640px; padding: 14px; }
 }
 </style>
