@@ -148,6 +148,15 @@
                   <v-text-field v-model="newAlumno.first_name" label="Nombre" variant="solo-filled" density="comfortable" />
                   <v-text-field v-model="newAlumno.last_name" label="Apellido" variant="solo-filled" density="comfortable" />
                   <v-text-field v-model="newAlumno.phone" label="Teléfono (opcional)" variant="solo-filled" density="comfortable" />
+                  <v-text-field
+                    v-model="newAlumno.password"
+                    label="Contraseña inicial (solo cuentas nuevas)"
+                    type="password"
+                    hint="8+ caracteres, mayúscula, minúscula, número y símbolo"
+                    persistent-hint
+                    variant="solo-filled"
+                    density="comfortable"
+                  />
                   <div class="d-flex ga-2 justify-end mt-1">
                     <v-btn @click="showAltaAlumnoModal = false" variant="text">Cancelar</v-btn>
                     <v-btn type="submit" color="primary" rounded="lg" class="coord-primary-btn">Inscribir alumno</v-btn>
@@ -156,7 +165,7 @@
               </div>
 
               <div v-show="alumnosActiveTab === 'import'" class="d-flex flex-column ga-3">
-                <p class="text-body-2 coord-subtext mb-0">Columnas: email, nombre, apellido, phone (opcional)</p>
+                <p class="text-body-2 coord-subtext mb-0">Columnas: email, nombre, apellido, password (para cuentas nuevas), phone (opcional)</p>
                 <v-file-input
                   v-model="alumnosExcelFiles"
                   accept=".xlsx,.xls"
@@ -191,7 +200,8 @@
               <p class="text-body-2 mb-0">No hay alumnos inscritos en este curso.</p>
             </div>
 
-            <v-table v-else density="comfortable" class="coord-table">
+            <div v-else class="coord-table-scroll" tabindex="0" aria-label="Tabla de alumnos; desliza horizontalmente para ver todas las columnas">
+            <v-table density="comfortable" class="coord-table">
               <thead>
                 <tr>
                   <th class="text-left">Alumno</th>
@@ -211,6 +221,7 @@
                 </tr>
               </tbody>
             </v-table>
+            </div>
           </v-card-text>
         </v-card>
       </v-window-item>
@@ -374,11 +385,11 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { coordinadorService } from '../../services'
-import { useCoordinadorToast } from './useCoordinadorToast'
+import { coordinadorToast } from '../../composables/useToast'
 
 const route = useRoute()
 const router = useRouter()
-const { notify, notifyError } = useCoordinadorToast()
+const { notify, notifyError } = coordinadorToast
 
 const cursoId = ref(route.params.id)
 const curso = ref(null)
@@ -394,7 +405,7 @@ const tabs = [
 ]
 
 const estudiantes = ref([])
-const newAlumno = reactive({ email: '', first_name: '', last_name: '', phone: '' })
+const newAlumno = reactive({ email: '', first_name: '', last_name: '', phone: '', password: '' })
 const alumnosExcelFiles = ref([])
 const showAltaAlumnoModal = ref(false)
 const alumnosActiveTab = ref('add')
@@ -509,7 +520,7 @@ async function addEstudiante() {
   try {
     await coordinadorService.addEstudianteCurso(cursoId.value, { ...newAlumno })
     notify('Alumno inscrito')
-    Object.assign(newAlumno, { email: '', first_name: '', last_name: '', phone: '' })
+    Object.assign(newAlumno, { email: '', first_name: '', last_name: '', phone: '', password: '' })
     await Promise.all([loadEstudiantes(), loadCurso()])
   } catch (e) {
     notifyError(e, 'No se pudo inscribir al alumno')
@@ -736,6 +747,8 @@ function formatFileSize(bytes) {
 
 .coord-tabs {
   border-bottom: 1px solid rgba(124, 197, 118, 0.16);
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .coord-primary-btn {
@@ -811,6 +824,15 @@ function formatFileSize(bytes) {
   opacity: 0.8;
 }
 
+.coord-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: rgba(124, 197, 118, 0.45) transparent;
+}
+
+.coord-table { min-width: 660px; }
+
 .coord-table :deep(tbody tr) {
   transition: background-color 0.2s ease;
 }
@@ -823,5 +845,15 @@ function formatFileSize(bytes) {
   border: 1px solid rgba(124, 197, 118, 0.16);
   border-radius: 16px;
   background: linear-gradient(145deg, #25262b 0%, #2f3038 100%);
+}
+
+@media (max-width: 599px) {
+  .coord-detalle-view { gap: 14px; }
+  .coord-hero :deep(.v-card-text),
+  .coord-surface-card :deep(.v-card-text) { padding: 16px !important; }
+  .coord-surface-card :deep(.v-card-title) { padding: 16px; white-space: normal; }
+  .coord-tabs :deep(.v-tab) { min-width: max-content; padding-inline: 11px; font-size: 0.74rem; }
+  .coord-table { min-width: 600px; }
+  .coord-toggle-row { align-items: flex-start !important; gap: 10px; }
 }
 </style>

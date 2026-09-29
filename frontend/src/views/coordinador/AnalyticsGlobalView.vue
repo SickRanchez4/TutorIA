@@ -170,9 +170,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { coordinadorService } from '../../services'
-import { useCoordinadorToast } from './useCoordinadorToast'
+import { coordinadorToast } from '../../composables/useToast'
 
-const { notifyError } = useCoordinadorToast()
+const { notifyError } = coordinadorToast
 
 const days = ref(30)
 const analytics = ref(null)
@@ -425,7 +425,7 @@ function formatShortDate(value) {
 .analytics-health-item p { line-height: 1.45; }
 .analytics-institution-fact { display: flex; align-items: flex-start; gap: 8px; margin-top: 24px; padding: 11px; border: 1px solid rgba(124, 197, 118, 0.16); border-radius: 12px; color: rgba(235, 243, 235, 0.7); font-size: 0.75rem; background: rgba(124, 197, 118, 0.06); }
 
-.analytics-course-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.analytics-course-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 12px; }
 .analytics-course-card { padding: 15px; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 15px; color: inherit; cursor: pointer; background: rgba(18, 21, 26, 0.18); transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease; }
 .analytics-course-card:hover,
 .analytics-course-card--selected { border-color: rgba(124, 197, 118, 0.43); background: rgba(124, 197, 118, 0.1); transform: translateY(-2px); }
@@ -437,11 +437,26 @@ function formatShortDate(value) {
 .analytics-rank { display: grid; width: 25px; height: 25px; flex: 0 0 auto; place-items: center; border-radius: 8px; color: var(--analytics-bright); font-size: 0.7rem; font-weight: 850; background: rgba(124, 197, 118, 0.13); }
 .analytics-student-cost { color: rgba(233, 243, 233, 0.75); font-size: 0.72rem; font-weight: 750; }
 
+@media (max-width: 959px) {
+  .analytics-range-toggle {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+
+  .analytics-kpi-card { min-height: 128px; }
+}
+
 @media (max-width: 600px) {
   .analytics-date-field { width: 100%; min-width: 100%; max-width: none; }
-  .analytics-range-toggle { width: 100%; overflow-x: auto; }
-  .analytics-range-toggle :deep(.v-btn) { padding-inline: 10px; }
+  .analytics-range-toggle { display: grid; width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; }
+  .analytics-range-toggle :deep(.v-btn) { width: 100%; padding-inline: 8px; }
   .analytics-course-detail { align-items: flex-start; flex-direction: column; }
   .analytics-hero :deep(.v-card-text) { padding: 20px !important; }
+  .analytics-period-badge,
+  .analytics-report-logo { max-width: 100%; }
+  .analytics-empty-report { min-height: 100px; padding: 16px; text-align: center; }
+  .analytics-report-section :deep(.v-card-text),
+  .analytics-surface :deep(.v-card-text) { padding: 16px !important; }
 }
 </style>

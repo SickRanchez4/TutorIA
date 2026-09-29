@@ -1,29 +1,37 @@
 <template>
-  <v-app class="d-flex flex-column" style="height: 100vh;">
-    <v-app-bar color="surface" elevation="0" :class="['border-b', { 'student-app-bar--chat': tab === 'chat' }]" :height="tab === 'chat' ? 58 : 80">
-      <v-app-bar-title class="d-flex align-center py-2">
-        <div>
-          <div class="text-subtitle-1 font-weight-bold">Panel Estudiante</div>
-          <div v-show="tab !== 'chat'" class="text-caption text-medium-emphasis">Chat académico, agenda y recursos</div>
+  <v-app class="d-flex flex-column student-app" style="height: 100vh;">
+    <!-- Fondo ambiental compartido con el Login -->
+    <div class="student-ambient" aria-hidden="true">
+      <div class="student-ambient__noise"></div>
+      <div class="student-ambient__vignette"></div>
+    </div>
+
+    <RoleSidebar
+      v-model="mobileDrawer"
+      role="Estudiante"
+      :user-name="userName"
+      :items="studentNavItems"
+      :active="tab"
+      permanent-on-desktop
+      @select="tab = $event"
+      @logout="logout"
+    />
+
+    <v-app-bar color="surface" elevation="0" :class="['border-b student-bar', { 'student-app-bar--chat': tab === 'chat' }]" :height="tab === 'chat' ? 58 : 80">
+      <v-app-bar-nav-icon v-if="!mdAndUp" aria-label="Abrir navegación" @click="mobileDrawer = true"></v-app-bar-nav-icon>
+      <v-app-bar-title class="student-toolbar-title py-2">
+        <div class="d-flex align-center ga-3 student-toolbar-brand">
+          <div class="student-brand-symbol" aria-hidden="true">
+            <v-icon icon="mdi-brain" size="19"></v-icon>
+            <span class="student-brand-ring"></span>
+          </div>
+          <PanelTitle role="Estudiante" class="student-toolbar-copy" />
         </div>
       </v-app-bar-title>
 
-      <v-spacer></v-spacer>
-
-      <v-chip variant="tonal" color="secondary" class="mr-3" prepend-icon="mdi-account-circle-outline">
+      <v-chip variant="tonal" color="secondary" class="mr-2 mr-sm-3 student-user-chip" prepend-icon="mdi-account-circle-outline">
         {{ userName }}
       </v-chip>
-      <v-btn variant="text" color="error" prepend-icon="mdi-logout" @click="logout">
-        Salir
-      </v-btn>
-
-      <template #extension>
-        <v-tabs v-model="tab" color="primary" align-tabs="start" density="compact" class="student-main-tabs">
-          <v-tab value="chat" prepend-icon="mdi-forum-outline">Asistente</v-tab>
-          <v-tab value="agenda" prepend-icon="mdi-calendar-month-outline">Agenda</v-tab>
-          <v-tab value="perfil" prepend-icon="mdi-account-circle">Perfil</v-tab>
-        </v-tabs>
-      </template>
     </v-app-bar>
 
     <v-snackbar
@@ -35,10 +43,11 @@
       {{ toast }}
     </v-snackbar>
 
-    <v-main :class="['fade-in flex-grow-1', tab === 'chat' ? 'student-chat-main' : 'overflow-auto']">
-      <v-container fluid :class="[tab === 'chat' ? 'py-2 px-3 student-chat-container' : 'py-6 px-6']" style="max-width: 1400px;">
+    <v-main :class="['fade-in flex-grow-1 student-main-layer', tab === 'chat' ? 'student-chat-main' : 'overflow-auto']">
+      <v-container fluid :class="[tab === 'chat' ? 'py-2 px-3 student-chat-container' : 'py-4 py-md-6 px-3 px-sm-4 px-md-6 student-content-container']" style="max-width: 1400px;">
         <!-- CHAT -->
-        <v-row v-show="tab === 'chat'" class="student-chat-view" dense>
+        <Transition name="tabfade">
+          <v-row v-show="tab === 'chat'" class="student-chat-view" density="compact">
           <!-- Sesiones -->
           <v-col cols="12" lg="3">
             <v-card class="student-chat-create pa-4 mb-2" rounded="xl">
@@ -59,9 +68,9 @@
                 variant="outlined"
                 density="comfortable"
                 hide-details
-                class="mb-3"
+                class="mb-3 student-field"
               />
-              <v-btn color="primary" block size="large" class="student-chat-primary" prepend-icon="mdi-arrow-up-right" @click="createSesion">
+              <v-btn color="primary" block size="large" class="student-chat-primary student-shine" prepend-icon="mdi-arrow-up-right" @click="createSesion">
                 Abrir conversación
               </v-btn>
               <v-alert v-if="!loadingBase && !grupos.length" type="warning" variant="tonal" density="compact" class="mt-2 text-caption">
@@ -122,6 +131,7 @@
           <v-col cols="12" lg="9" class="d-flex flex-column">
             <v-card class="student-chat-panel d-flex flex-column overflow-hidden flex-grow-1" rounded="xl">
               <div v-if="!activeSesion" class="student-chat-welcome flex-grow-1 d-flex align-center justify-center">
+                <SynapseBackdrop :density="26000" :max-nodes="70" />
                 <div class="text-center px-5">
                   <div class="student-chat-orbit mx-auto mb-5">
                     <div class="student-chat-orbit-core"><v-icon icon="mdi-brain" size="35"></v-icon></div>
@@ -258,57 +268,61 @@
               </template>
             </v-card>
           </v-col>
-        </v-row>
+          </v-row>
+        </Transition>
 
         <!-- AGENDA -->
+        <Transition name="tabfade">
         <div v-show="tab === 'agenda'">
-          <v-card class="pa-4 mb-4 d-flex flex-wrap align-center justify-space-between ga-3">
-            <div class="d-flex align-center ga-2">
+          <v-card class="pa-3 pa-sm-4 mb-4 d-flex flex-wrap align-center justify-space-between ga-3 student-panel agenda-toolbar" rounded="xl">
+            <div class="d-flex align-center justify-center ga-2 agenda-month-nav">
               <v-btn icon="mdi-chevron-left" variant="tonal" size="small" @click="prevMonth"></v-btn>
-              <h3 class="text-subtitle-1 font-weight-bold text-center" style="min-width: 190px">{{ monthLabel }}</h3>
+              <h3 class="text-subtitle-1 font-weight-bold text-center agenda-month-label">{{ monthLabel }}</h3>
               <v-btn icon="mdi-chevron-right" variant="tonal" size="small" @click="nextMonth"></v-btn>
             </div>
-            <div class="d-flex align-center ga-2">
+            <div class="d-flex align-center ga-2 agenda-filter-row">
               <v-select
                 v-model="agendaGrupoFilter"
                 :items="[{ title: 'Todos mis cursos', value: '' }, ...grupos.map(g => ({ title: grupoLabel(g), value: g.id }))]"
                 density="compact"
                 hide-details
-                style="min-width: 220px"
+                class="student-field agenda-course-filter"
                 @update:model-value="loadAgenda"
               />
-              <v-btn color="primary" @click="loadAgenda">Actualizar</v-btn>
+              <v-btn color="primary" class="student-shine" @click="loadAgenda">Actualizar</v-btn>
             </div>
           </v-card>
 
-          <v-card class="pa-4 mb-4" variant="tonal" color="primary">
-            <div class="calendar-grid mb-2">
-              <div v-for="d in weekDays" :key="d" class="text-center text-caption text-uppercase font-weight-bold text-medium-emphasis">{{ d }}</div>
-            </div>
-            <div class="calendar-grid">
-              <article
-                v-for="day in calendarDays"
-                :key="day.key"
-                :class="['calendar-cell pa-2', day.inMonth ? 'calendar-cell--in' : 'calendar-cell--out']"
-              >
-                <p :class="['text-caption font-weight-bold mb-1', day.isToday ? 'text-primary' : day.inMonth ? '' : 'text-disabled']">{{ day.date.getDate() }}</p>
-                <div class="calendar-events">
-                  <button
-                    v-for="item in day.events.slice(0, 2)"
-                    :key="item.id"
-                    :title="item.titulo"
-                    class="calendar-event text-truncate"
-                    :class="eventColor(item.tipo)"
-                  >
-                    {{ item.titulo }}
-                  </button>
-                  <p v-if="day.events.length > 2" class="text-caption text-medium-emphasis mb-0">+{{ day.events.length - 2 }} más</p>
-                </div>
-              </article>
+          <v-card class="pa-3 pa-sm-4 mb-4 student-panel" rounded="xl">
+            <div class="student-calendar-scroll" tabindex="0" aria-label="Calendario mensual; desliza horizontalmente para verlo completo">
+              <div class="calendar-grid mb-2">
+                <div v-for="d in weekDays" :key="d" class="text-center text-caption text-uppercase font-weight-bold text-medium-emphasis">{{ d }}</div>
+              </div>
+              <div class="calendar-grid">
+                <article
+                  v-for="day in calendarDays"
+                  :key="day.key"
+                  :class="['calendar-cell pa-2', day.inMonth ? 'calendar-cell--in' : 'calendar-cell--out', { 'calendar-cell--today': day.isToday }]"
+                >
+                  <p :class="['text-caption font-weight-bold mb-1', day.isToday ? 'text-primary' : day.inMonth ? '' : 'text-disabled']">{{ day.date.getDate() }}</p>
+                  <div class="calendar-events">
+                    <button
+                      v-for="item in day.events.slice(0, 2)"
+                      :key="item.id"
+                      :title="item.titulo"
+                      class="calendar-event text-truncate"
+                      :class="eventColor(item.tipo)"
+                    >
+                      {{ item.titulo }}
+                    </button>
+                    <p v-if="day.events.length > 2" class="text-caption text-medium-emphasis mb-0">+{{ day.events.length - 2 }} más</p>
+                  </div>
+                </article>
+              </div>
             </div>
           </v-card>
 
-          <v-card class="pa-5">
+          <v-card class="pa-5 student-panel" rounded="xl">
             <h4 class="text-subtitle-1 font-weight-bold mb-3">Próximas actividades del mes</h4>
             <p v-if="!upcomingActivities.length" class="text-body-2 text-medium-emphasis">Sin actividades en este mes.</p>
             <v-list v-else density="comfortable" class="pa-0">
@@ -325,9 +339,11 @@
             </v-list>
           </v-card>
         </div>
+        </Transition>
 
         <!-- PERFIL -->
-        <div v-show="tab === 'perfil'">
+        <Transition name="tabfade">
+        <div v-show="tab === 'perfil'" class="student-profile">
           <ProfileSection 
             :profile="profileData" 
             @update-profile="updateProfile" 
@@ -335,6 +351,7 @@
             @notify="(notif) => notify(notif.message, notif.isError)"
           />
         </div>
+        </Transition>
       </v-container>
     </v-main>
   </v-app>
@@ -347,18 +364,24 @@ import { estudianteService } from '../services'
 import { useAuthStore } from '../stores/auth'
 import ProfileSection from '../components/ProfileSection.vue'
 import MermaidMessage from '../components/MermaidMessage.vue'
+import SynapseBackdrop from '../components/SynapseBackdrop.vue'
+import RoleSidebar from '../components/RoleSidebar.vue'
+import PanelTitle from '../components/PanelTitle.vue'
+import { createToast } from '../composables/useToast'
+import { useDisplay } from 'vuetify'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const { mdAndUp } = useDisplay()
 
 const tab = ref('chat')
-const toast = ref('')
-const toastError = ref(false)
-function notify(msg, isError = false) {
-  toast.value = msg
-  toastError.value = isError
-  setTimeout(() => { toast.value = '' }, 3500)
-}
+const studentNavItems = [
+  { value: 'chat', label: 'Asistente', icon: 'mdi-forum-outline' },
+  { value: 'agenda', label: 'Agenda', icon: 'mdi-calendar-month-outline' },
+  { value: 'perfil', label: 'Perfil', icon: 'mdi-account-circle' },
+]
+const mobileDrawer = ref(mdAndUp.value)
+const { message: toast, isError: toastError, notify } = createToast()
 function err(e, fallback) { notify(e.response?.data?.message || fallback, true) }
 function logout() { authStore.logout(); router.push('/login') }
 const userName = computed(() => authStore.user?.full_name || authStore.user?.name || authStore.user?.email)
@@ -806,6 +829,180 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ===== Capa ambiental compartida con el Login ===== */
+.student-app {
+  background:
+    radial-gradient(100% 90% at 0% 0%, rgba(124, 197, 118, 0.1), transparent 55%),
+    radial-gradient(70% 110% at 100% 100%, rgba(69, 148, 113, 0.11), transparent 58%),
+    linear-gradient(127deg, #111419 0%, #171b20 52%, #121518 100%) !important;
+}
+
+.student-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.student-ambient__noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.18;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+}
+
+.student-ambient__vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 95% at 50% 42%, transparent 45%, rgba(9, 11, 13, 0.5) 100%);
+}
+
+.student-main-layer {
+  position: relative;
+  z-index: 1;
+}
+
+/* ===== Barra superior ===== */
+.student-bar {
+  border-bottom: 1px solid rgba(124, 197, 118, 0.16) !important;
+  background: linear-gradient(180deg, rgba(26, 30, 35, 0.92), rgba(19, 23, 27, 0.86)) !important;
+  backdrop-filter: blur(14px) saturate(1.1);
+}
+
+.student-brand-symbol {
+  position: relative;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid rgba(155, 226, 153, 0.42);
+  border-radius: 12px;
+  color: #b6f2aa;
+  background: linear-gradient(145deg, rgba(124, 197, 118, 0.22), rgba(124, 197, 118, 0.05));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 20px rgba(124, 197, 118, 0.16);
+}
+
+.student-app-bar--chat .student-brand-symbol {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+
+.student-brand-ring {
+  position: absolute;
+  inset: -5px;
+  border: 1px solid rgba(124, 197, 118, 0.26);
+  border-radius: 15px;
+  animation: student-ring-pulse 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.student-toolbar-title {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.student-toolbar-brand,
+.student-toolbar-copy { min-width: 0; }
+.student-toolbar-copy { flex: 1; }
+.student-brand-symbol { flex-shrink: 0; }
+
+.student-user-chip {
+  max-width: min(260px, 30vw);
+}
+
+.student-user-chip :deep(.v-chip__content) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+/* ===== Paneles con el lenguaje del Login ===== */
+.student-panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(205, 237, 199, 0.16) !important;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(124, 197, 118, 0.09), transparent 38%),
+    linear-gradient(145deg, rgba(42, 48, 52, 0.85), rgba(24, 29, 32, 0.9)) !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+}
+
+.student-panel::before,
+.student-chat-create::before,
+.student-chat-panel::before {
+  position: absolute;
+  top: 0;
+  left: 10%;
+  width: 80%;
+  height: 1px;
+  content: '';
+  background: linear-gradient(90deg, transparent, rgba(171, 238, 163, 0.7), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ===== Botón con destello (reuso del Login) ===== */
+.student-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.student-shine::after {
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 55%;
+  height: 100%;
+  content: '';
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+  transform: skewX(-18deg);
+  transition: left 0.6s ease;
+  pointer-events: none;
+}
+
+.student-shine:hover::after {
+  left: 125%;
+}
+
+/* ===== Campos con foco luminoso (reuso del Login) ===== */
+.student-field :deep(.v-field) {
+  border-radius: 13px;
+  transition: background 0.22s ease, box-shadow 0.22s ease;
+}
+
+.student-field :deep(.v-field--focused) {
+  background: rgba(124, 197, 118, 0.07);
+  box-shadow: 0 0 0 1px rgba(124, 197, 118, 0.25), 0 0 18px rgba(124, 197, 118, 0.1);
+}
+
+/* ===== Transición entre pestañas ===== */
+.tabfade-enter-active {
+  animation: student-tab-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes student-tab-enter {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes student-ring-pulse {
+  0%, 100% { opacity: 0.65; transform: scale(1); }
+  50% { opacity: 0.15; transform: scale(1.12); }
+}
+
+/* ===== Perfil: hereda el estilo de panel ===== */
+.student-profile :deep(.v-card) {
+  border: 1px solid rgba(205, 237, 199, 0.16);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(124, 197, 118, 0.09), transparent 38%),
+    linear-gradient(145deg, rgba(42, 48, 52, 0.85), rgba(24, 29, 32, 0.9));
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(14px);
+}
+
 .student-chat-view {
   width: 100%;
   --chat-green: #7cc576;
@@ -836,20 +1033,15 @@ onMounted(() => {
   min-height: 58px !important;
 }
 
-.student-main-tabs :deep(.v-tab) {
-  min-height: 38px;
-  padding-inline: 14px;
-  font-size: 0.8rem;
-}
-
 .student-chat-create,
 .student-chat-sessions,
 .student-chat-panel {
-  border: 1px solid rgba(124, 197, 118, 0.2) !important;
+  border: 1px solid rgba(205, 237, 199, 0.16) !important;
   background:
     radial-gradient(circle at 6% 0%, rgba(124, 197, 118, 0.11), transparent 35%),
-    linear-gradient(145deg, rgba(47, 51, 59, 0.97), rgba(35, 39, 46, 0.98)) !important;
-  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.2);
+    linear-gradient(145deg, rgba(42, 48, 52, 0.88), rgba(24, 29, 32, 0.92)) !important;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(14px);
 }
 
 .student-chat-create {
@@ -1327,17 +1519,65 @@ onMounted(() => {
   .student-chat-sessions { max-height: none; }
 }
 
+@media (max-width: 959px) {
+  .student-toolbar-title { margin-inline: 8px; }
+  .student-chat-container { padding-inline: 12px !important; }
+  .student-chat-panel { min-height: min(620px, calc(100dvh - 150px)); }
+  .student-chat-sessions { max-height: 360px; }
+}
+
 @media (max-width: 600px) {
-  .student-chat-container { padding-inline: 16px !important; }
-  .student-chat-panel { min-height: 550px; }
-  .student-chat-welcome { min-height: 500px; }
+  .student-chat-container { padding-inline: 8px !important; }
+  .student-content-container { padding-inline: 12px !important; }
+  .student-chat-panel { min-height: min(560px, calc(100dvh - 140px)); border-radius: 18px !important; }
+  .student-chat-welcome { min-height: min(440px, calc(100dvh - 190px)); }
   .student-chat-welcome::after { width: 450px; height: 450px; }
   .student-chat-online-chip { display: none; }
   .student-chat-mode-label { width: 100%; }
-  .chat-bubble { max-width: calc(100vw - 108px); }
+  .chat-bubble { max-width: calc(100vw - 76px); padding: 10px 12px; }
   .chat-bubble--resource { min-width: 0; max-width: calc(100vw - 42px); }
-  .student-main-tabs :deep(.v-tab) { padding-inline: 9px; }
   .student-chat-composer-note { line-height: 1.4; }
+
+  .student-user-chip {
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+    padding-inline: 0 !important;
+  }
+
+  .student-user-chip :deep(.v-chip__content) { display: none; }
+  .student-user-chip :deep(.v-chip__prepend) { margin-inline: auto; }
+  .student-app-bar--chat .student-brand-symbol { display: none; }
+
+  .agenda-toolbar { align-items: stretch !important; }
+  .agenda-month-nav,
+  .agenda-filter-row { width: 100%; }
+  .agenda-month-label { flex: 1; min-width: 0; text-transform: capitalize; }
+  .agenda-filter-row { align-items: stretch !important; flex-direction: column; }
+  .agenda-course-filter { width: 100%; min-width: 0; }
+  .agenda-filter-row > :deep(.v-btn) { width: 100%; }
+
+  .student-calendar-scroll {
+    margin-inline: -4px;
+    padding: 2px 4px 8px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-color: rgba(124, 197, 118, 0.45) transparent;
+  }
+
+  .student-calendar-scroll > .calendar-grid { min-width: 650px; }
+
+  .student-chat-input :deep(.v-field) { padding-right: 116px; }
+  .student-chat-microphone { right: 44px; width: 30px; min-width: 30px; height: 30px; bottom: 9px; }
+  .student-chat-image-button { right: 78px; width: 30px; min-width: 30px; height: 30px; bottom: 9px; }
+  .student-chat-send { right: 8px; width: 28px; min-width: 28px; height: 28px; bottom: 10px; }
+  .student-chat-image-preview { width: 100%; max-width: none; }
+}
+
+@media (max-width: 359px) {
+  .student-chat-mode { padding-inline: 9px !important; font-size: 0.7rem; }
+  .student-chat-input :deep(.v-field) { padding-right: 108px; }
+  .chat-bubble { max-width: calc(100vw - 64px); }
 }
 
 .calendar-grid {
@@ -1346,10 +1586,27 @@ onMounted(() => {
   gap: 8px;
 }
 
+.student-calendar-scroll {
+  max-width: 100%;
+}
+
 .calendar-cell {
   min-height: 98px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.calendar-cell--in:hover {
+  border-color: rgba(124, 197, 118, 0.32);
+  background: rgba(124, 197, 118, 0.05);
+  transform: translateY(-2px);
+}
+
+.calendar-cell--today {
+  border-color: rgba(155, 230, 146, 0.55);
+  background: rgba(124, 197, 118, 0.08);
+  box-shadow: inset 0 0 18px rgba(124, 197, 118, 0.08);
 }
 
 .calendar-cell--in {
@@ -1385,5 +1642,19 @@ onMounted(() => {
 .calendar-event--tarea { background: rgba(124, 197, 118, 0.7); }
 .calendar-event--proyecto { background: rgba(255, 255, 255, 0.55); }
 .calendar-event--default { background: rgba(154, 155, 163, 0.9); }
+
+@media (prefers-reduced-motion: reduce) {
+  .student-brand-ring,
+  .student-chat-orbit,
+  .student-chat-orbit-core,
+  .student-chat-online-dot,
+  .tabfade-enter-active {
+    animation: none !important;
+  }
+
+  .student-shine::after { display: none; }
+  .calendar-cell--in:hover { transform: none; }
+  .student-session-item:hover { transform: none; }
+}
 </style>
 

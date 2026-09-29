@@ -96,9 +96,9 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { coordinadorService } from '../../services'
-import { useCoordinadorToast } from './useCoordinadorToast'
+import { coordinadorToast } from '../../composables/useToast'
 
-const { notify, notifyError } = useCoordinadorToast()
+const { notify, notifyError } = coordinadorToast
 
 const institucion = ref({ nombre: '', dominio_permitido: '', is_active: true, created_at: null })
 const suscripcion = ref(null)

@@ -4,11 +4,17 @@ Super Admin Routes: Institution & Plan Management
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from models import db, Institucion, Plan, Suscripcion, User, Role
-from routes.auth_multi_tenant import super_admin_required
+from routes.auth_multi_tenant import super_admin_required, validate_password
+from services.validation import (
+    is_valid_email,
+    normalize_email,
+    parse_boolean,
+    parse_non_negative_decimal,
+    parse_non_negative_int,
+)
 from datetime import datetime, timedelta, timezone
 from werkzeug.security import generate_password_hash
 import logging
-import uuid
 
 instituciones_bp = Blueprint('instituciones', __name__)
 logger = logging.getLogger(__name__)
@@ -43,10 +49,13 @@ def create_institucion():
         return jsonify({'message': 'nombre es requerido'}), 400
     
     try:
+        nombre = str(data['nombre']).strip()
+        if not nombre:
+            return jsonify({'message': 'nombre es requerido'}), 400
         institucion = Institucion(
-            nombre=data['nombre'],
-            dominio_permitido=data.get('dominio_permitido'),
-            is_active=data.get('is_active', True)
+            nombre=nombre,
+            dominio_permitido=str(data.get('dominio_permitido') or '').strip() or None,
+            is_active=parse_boolean(data.get('is_active', True), 'is_active')
         )
         
         db.session.add(institucion)
@@ -57,6 +66,8 @@ def create_institucion():
             'institucion': institucion.to_dict()
         }), 201
     
+    except ValueError as e:
+        return jsonify({'message': str(e)}), 400
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error al crear institución: {str(e)}", exc_info=True)
@@ -119,15 +130,16 @@ def update_institucion(institucion_id):
     
     try:
         if 'nombre' in data:
-            institucion.nombre = data['nombre']
+            nombre = str(data['nombre'] or '').strip()
+            if not nombre:
+                return jsonify({'message': 'nombre no puede estar vacío'}), 400
+            institucion.nombre = nombre
         
         if 'dominio_permitido' in data:
-            institucion.dominio_permitido = data['dominio_permitido']
+            institucion.dominio_permitido = str(data['dominio_permitido'] or '').strip() or None
         
         if 'is_active' in data:
-            if not isinstance(data['is_active'], bool):
-                return jsonify({'message': 'is_active debe ser boolean'}), 400
-            institucion.is_active = data['is_active']
+            institucion.is_active = parse_boolean(data['is_active'], 'is_active')
         
         institucion.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.session.commit()
@@ -137,6 +149,8 @@ def update_institucion(institucion_id):
             'institucion': institucion.to_dict()
         }), 200
     
+    except ValueError as e:
+        return jsonify({'message': str(e)}), 400
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error al actualizar institución: {str(e)}", exc_info=True)
@@ -229,16 +243,19 @@ def create_plan():
     """
     data = request.get_json() or {}
     required = ['nombre', 'max_cuentas', 'max_almacenamiento_gb']
-    missing = [f for f in required if not data.get(f)]
+    missing = [f for f in required if f not in data or data[f] is None]
     if missing:
         return jsonify({'message': f'Faltan campos: {", ".join(missing)}'}), 400
     
     try:
+        nombre = str(data['nombre']).strip()
+        if not nombre:
+            return jsonify({'message': 'nombre es requerido'}), 400
         plan = Plan(
-            nombre=data['nombre'],
-            max_cuentas=data['max_cuentas'],
-            max_almacenamiento_gb=data['max_almacenamiento_gb'],
-            is_active=data.get('is_active', True)
+            nombre=nombre,
+            max_cuentas=parse_non_negative_int(data['max_cuentas'], 'max_cuentas'),
+            max_almacenamiento_gb=parse_non_negative_decimal(data['max_almacenamiento_gb'], 'max_almacenamiento_gb'),
+            is_active=parse_boolean(data.get('is_active', True), 'is_active')
         )
         
         db.session.add(plan)
@@ -249,6 +266,8 @@ def create_plan():
             'plan': plan.to_dict()
         }), 201
     
+    except ValueError as e:
+        return jsonify({'message': str(e)}), 400
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error al crear plan: {str(e)}", exc_info=True)
@@ -269,13 +288,18 @@ def update_plan(plan_id):
     
     try:
         if 'nombre' in data:
-            plan.nombre = data['nombre']
+            nombre = str(data['nombre'] or '').strip()
+            if not nombre:
+                return jsonify({'message': 'nombre no puede estar vacío'}), 400
+            plan.nombre = nombre
         if 'max_cuentas' in data:
-            plan.max_cuentas = data['max_cuentas']
+            plan.max_cuentas = parse_non_negative_int(data['max_cuentas'], 'max_cuentas', allow_none=True)
         if 'max_almacenamiento_gb' in data:
-            plan.max_almacenamiento_gb = data['max_almacenamiento_gb']
+            plan.max_almacenamiento_gb = parse_non_negative_decimal(
+                data['max_almacenamiento_gb'], 'max_almacenamiento_gb', allow_none=True,
+            )
         if 'is_active' in data:
-            plan.is_active = data['is_active']
+            plan.is_active = parse_boolean(data['is_active'], 'is_active')
         
         db.session.commit()
         
@@ -284,6 +308,8 @@ def update_plan(plan_id):
             'plan': plan.to_dict()
         }), 200
     
+    except ValueError as e:
+        return jsonify({'message': str(e)}), 400
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error al actualizar plan: {str(e)}", exc_info=True)
@@ -363,7 +389,7 @@ def create_suscripcion(institucion_id):
     
     data = request.get_json() or {}
     required = ['plan_id', 'limite_tokens_mensual']
-    missing = [f for f in required if not data.get(f)]
+    missing = [f for f in required if f not in data or data[f] is None]
     if missing:
         return jsonify({'message': f'Faltan campos: {", ".join(missing)}'}), 400
     
@@ -382,10 +408,14 @@ def create_suscripcion(institucion_id):
             # Default: 1 year from start
             fecha_fin = fecha_inicio + timedelta(days=365)
         
+        limite_tokens = parse_non_negative_int(data['limite_tokens_mensual'], 'limite_tokens_mensual')
+        if fecha_fin < fecha_inicio:
+            return jsonify({'message': 'fecha_fin debe ser posterior a fecha_inicio'}), 400
+
         suscripcion = Suscripcion(
             institucion_id=institucion_id,
             plan_id=data['plan_id'],
-            limite_tokens_mensual=data['limite_tokens_mensual'],
+            limite_tokens_mensual=limite_tokens,
             fecha_inicio=fecha_inicio,
             fecha_fin=fecha_fin,
             is_active=True
@@ -444,7 +474,9 @@ def update_suscripcion(institucion_id):
             suscripcion.plan_id = data['plan_id']
 
         if 'limite_tokens_mensual' in data:
-            suscripcion.limite_tokens_mensual = data['limite_tokens_mensual']
+            suscripcion.limite_tokens_mensual = parse_non_negative_int(
+                data['limite_tokens_mensual'], 'limite_tokens_mensual',
+            )
 
         if 'fecha_inicio' in data:
             suscripcion.fecha_inicio = datetime.fromisoformat(data['fecha_inicio'])
@@ -453,7 +485,10 @@ def update_suscripcion(institucion_id):
             suscripcion.fecha_fin = datetime.fromisoformat(data['fecha_fin'])
         
         if 'is_active' in data:
-            suscripcion.is_active = data['is_active']
+            suscripcion.is_active = parse_boolean(data['is_active'], 'is_active')
+
+        if suscripcion.fecha_fin < suscripcion.fecha_inicio:
+            return jsonify({'message': 'fecha_fin debe ser posterior a fecha_inicio'}), 400
         
         suscripcion.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.session.commit()
@@ -548,12 +583,19 @@ def create_coordinador_institucion(institucion_id):
         return jsonify({'message': 'Rol coordinador no encontrado'}), 404
 
     data = request.get_json() or {}
-    required = ['email', 'first_name', 'last_name', 'phone']
+    required = ['email', 'password', 'first_name', 'last_name', 'phone']
     missing = [f for f in required if not data.get(f)]
     if missing:
         return jsonify({'message': f'Faltan campos: {", ".join(missing)}'}), 400
 
-    if User.query.filter_by(email=data['email']).first():
+    email = normalize_email(data['email'])
+    if not is_valid_email(email):
+        return jsonify({'message': 'Email inválido'}), 400
+    is_valid, password_error = validate_password(data['password'])
+    if not is_valid:
+        return jsonify({'message': password_error}), 400
+
+    if User.query.filter_by(email=email).first():
         return jsonify({'message': 'El email ya está registrado'}), 409
 
     # Count all active user accounts in the institution (coordinators + students)
@@ -567,14 +609,13 @@ def create_coordinador_institucion(institucion_id):
         return jsonify({'message': 'Límite de cuentas alcanzado para el plan asignado'}), 409
 
     try:
-        # Use default password "password" for coordinators created from admin panel
         user = User(
             institucion_id=institucion_id,
-            email=data['email'],
-            password_hash=generate_password_hash('password'),
-            first_name=data['first_name'],
-            last_name=data['last_name'],
-            phone=data['phone'],
+            email=email,
+            password_hash=generate_password_hash(data['password']),
+            first_name=str(data['first_name']).strip(),
+            last_name=str(data['last_name']).strip(),
+            phone=str(data['phone']).strip(),
             email_verified=False,
             is_active=True
         )
@@ -624,13 +665,19 @@ def update_coordinador_institucion(institucion_id, user_id):
         if 'phone' in data:
             user.phone = data['phone']
         if 'email' in data and data['email'] != user.email:
-            if User.query.filter_by(email=data['email']).first():
+            email = normalize_email(data['email'])
+            if not is_valid_email(email):
+                return jsonify({'message': 'Email inválido'}), 400
+            if User.query.filter_by(email=email).first():
                 return jsonify({'message': 'El email ya está registrado'}), 409
-            user.email = data['email']
+            user.email = email
         if 'password' in data and data['password']:
+            is_valid, password_error = validate_password(data['password'])
+            if not is_valid:
+                return jsonify({'message': password_error}), 400
             user.password_hash = generate_password_hash(data['password'])
         if 'is_active' in data:
-            user.is_active = bool(data['is_active'])
+            user.is_active = parse_boolean(data['is_active'], 'is_active')
 
         db.session.commit()
 
@@ -647,6 +694,8 @@ def update_coordinador_institucion(institucion_id, user_id):
             }
         }), 200
 
+    except ValueError as e:
+        return jsonify({'message': str(e)}), 400
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error al actualizar coordinador: {str(e)}", exc_info=True)

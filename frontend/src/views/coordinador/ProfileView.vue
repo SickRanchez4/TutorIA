@@ -36,10 +36,10 @@ import { onMounted, ref } from 'vue'
 import { coordinadorService } from '../../services'
 import ProfileSection from '../../components/ProfileSection.vue'
 import { useAuthStore } from '../../stores/auth'
-import { useCoordinadorToast } from './useCoordinadorToast'
+import { coordinadorToast } from '../../composables/useToast'
 
 const authStore = useAuthStore()
-const { notify: toastNotify } = useCoordinadorToast()
+const { notify: toastNotify } = coordinadorToast
 const profileData = ref({ first_name: '', last_name: '', phone: '' })
 const loading = ref(true)
 

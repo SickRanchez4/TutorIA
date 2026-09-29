@@ -14,7 +14,7 @@
     </v-card>
 
     <v-card class="coord-surface-card" rounded="xl" variant="flat">
-      <v-card-text class="d-flex align-center justify-space-between flex-wrap ga-3">
+      <v-card-text class="d-flex align-center justify-space-between flex-wrap ga-3 cuentas-toolbar">
         <h3 class="text-subtitle-1 font-weight-bold d-flex align-center ga-2 mb-0">
           <v-icon icon="mdi-account-multiple" color="primary"></v-icon>
           Cuentas
@@ -26,7 +26,7 @@
           variant="solo-filled"
           density="compact"
           hide-details
-          style="max-width: 320px"
+          class="cuentas-search"
         ></v-text-field>
       </v-card-text>
     </v-card>
@@ -43,7 +43,8 @@
           <p class="text-body-2 mb-0">No hay cuentas de alumnos registradas todavía.</p>
         </div>
 
-        <v-table v-else density="comfortable" class="coord-table">
+        <div v-else class="coord-table-scroll" tabindex="0" aria-label="Tabla de cuentas; desliza horizontalmente para ver todas las columnas">
+        <v-table density="comfortable" class="coord-table">
           <thead>
             <tr>
               <th class="text-left">Nombre</th>
@@ -68,13 +69,14 @@
                 <span v-if="est.cursos.length">{{ est.cursos.map(c => c.codigo || c.nombre).join(', ') }}</span>
                 <span v-else>Sin cursos</span>
               </td>
-              <td class="text-right">
+              <td class="text-right coord-table-actions">
                 <v-btn size="small" variant="text" color="primary" @click="openEdit(est)">Editar</v-btn>
                 <v-btn size="small" variant="text" color="error" @click="confirmDeleteEstudiante = est">Eliminar</v-btn>
               </td>
             </tr>
           </tbody>
         </v-table>
+        </div>
       </v-card-text>
     </v-card>
 
@@ -120,9 +122,9 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { coordinadorService } from '../../services'
-import { useCoordinadorToast } from './useCoordinadorToast'
+import { coordinadorToast } from '../../composables/useToast'
 
-const { notify, notifyError } = useCoordinadorToast()
+const { notify, notifyError } = coordinadorToast
 
 const estudiantes = ref([])
 const loading = ref(true)
@@ -252,6 +254,26 @@ onMounted(loadEstudiantes)
   box-shadow: 0 0 18px rgba(124, 197, 118, 0.24);
 }
 
+.cuentas-search {
+  width: min(100%, 320px);
+  flex: 0 1 320px;
+}
+
+.coord-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-color: rgba(124, 197, 118, 0.45) transparent;
+}
+
+.coord-table {
+  min-width: 820px;
+}
+
+.coord-table-actions {
+  white-space: nowrap;
+}
+
 .coord-table :deep(thead th) {
   font-weight: 700;
   opacity: 0.82;
@@ -263,5 +285,14 @@ onMounted(loadEstudiantes)
 
 .coord-table :deep(tbody tr:hover) {
   background: rgba(124, 197, 118, 0.08);
+}
+
+@media (max-width: 599px) {
+  .coord-cuentas-view { gap: 14px; }
+  .coord-hero :deep(.v-card-text),
+  .coord-surface-card :deep(.v-card-text) { padding: 16px !important; }
+  .cuentas-toolbar { align-items: stretch !important; flex-direction: column; }
+  .cuentas-search { width: 100%; max-width: none; flex-basis: auto; }
+  .coord-table { min-width: 760px; }
 }
 </style>

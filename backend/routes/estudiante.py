@@ -5,6 +5,7 @@ import os
 import json
 import logging
 import base64
+import binascii
 import re
 from datetime import datetime, timezone
 
@@ -18,12 +19,11 @@ from models.agenda_notificaciones import ActividadAgenda
 from services.model_pricing import DEFAULT_MODEL, DEFAULT_PROVIDER, calculate_cost_usd, get_active_model_price
 from services.subscription_quota import request_is_allowed
 from services.token_counting import count_tokens
+from routes.auth_multi_tenant import estudiante_required
 
 logger = logging.getLogger(__name__)
 
 estudiante_bp = Blueprint('estudiante', __name__)
-
-N8N_CHAT_WEBHOOK_URL = os.environ.get('N8N_CHAT_WEBHOOK_URL', '')
 
 CHAT_SERVICE_UNAVAILABLE_MESSAGE = (
     'No puedo responder en este momento porque el servicio de IA no está disponible. '
@@ -108,7 +108,7 @@ def _validated_chat_image(data):
         raise ValueError('La imagen adjunta no tiene un formato válido.')
     try:
         image_bytes = base64.b64decode(match.group(2), validate=True)
-    except (ValueError, base64.binascii.Error):
+    except (ValueError, binascii.Error):
         raise ValueError('La imagen adjunta no tiene un formato válido.')
     if not image_bytes or len(image_bytes) > MAX_CHAT_IMAGE_BYTES:
         raise ValueError('La imagen no puede superar los 4 MB.')
@@ -192,10 +192,11 @@ def _call_n8n_chat(payload):
     Call the n8n chat webhook.
     Returns (response_text, citas_json_str, usage_dict_or_none, applied_mode_or_none).
     """
-    if not N8N_CHAT_WEBHOOK_URL:
+    webhook_url = os.environ.get('N8N_CHAT_WEBHOOK_URL', '').strip()
+    if not webhook_url:
         raise RuntimeError('N8N_CHAT_WEBHOOK_URL no está configurado en el backend')
 
-    resp = http_requests.post(N8N_CHAT_WEBHOOK_URL, json=payload, timeout=60)
+    resp = http_requests.post(webhook_url, json=payload, timeout=60)
     resp.raise_for_status()
     return _parse_n8n_chat_response(resp.json())
 
@@ -243,7 +244,7 @@ def _record_consumption(curso, user_id, tipo_operacion, message, response, usage
 
 
 def _save_chat_exchange(sesion, contenido, respuesta_text, citas_json, tipo_interaccion, image_name=None):
-    """Persist a student message and its assistant reply, including fallback replies."""
+    """Stage a student message and reply; the caller owns the transaction."""
     msg_user = MensajeChat(
         sesion_chat_id=sesion.id,
         rol='user',
@@ -260,7 +261,7 @@ def _save_chat_exchange(sesion, contenido, respuesta_text, citas_json, tipo_inte
     )
     db.session.add(msg_user)
     db.session.add(msg_assistant)
-    db.session.commit()
+    db.session.flush()
     return msg_user, msg_assistant
 
 
@@ -270,6 +271,7 @@ def _save_chat_exchange(sesion, contenido, respuesta_text, citas_json, tipo_inte
 
 @estudiante_bp.route('/cursos', methods=['GET'])
 @jwt_required()
+@estudiante_required
 def get_cursos():
     """List all courses the authenticated student is enrolled in."""
     user_id = get_jwt_identity()
@@ -291,6 +293,7 @@ def get_cursos():
 
 @estudiante_bp.route('/chat/sesiones', methods=['GET'])
 @jwt_required()
+@estudiante_required
 def list_sesiones():
     """List active chat sessions for the current student, optionally filtered by curso_id."""
     user_id = get_jwt_identity()
@@ -306,13 +309,14 @@ def list_sesiones():
 
 @estudiante_bp.route('/chat/sesiones', methods=['POST'])
 @jwt_required()
+@estudiante_required
 def create_sesion():
     """Create a new chat session for a course the student is enrolled in."""
     user_id = get_jwt_identity()
     data = request.get_json() or {}
 
     curso_id = data.get('curso_id')
-    logger.info(f'Creating sesión: user_id={user_id}, curso_id={curso_id}, data={data}')
+    logger.info('Creating sesión: user_id=%s, curso_id=%s', user_id, curso_id)
     
     if not curso_id:
         return jsonify({'message': 'curso_id es requerido'}), 400
@@ -338,11 +342,12 @@ def create_sesion():
     except Exception as e:
         db.session.rollback()
         logger.exception(f'Error creando sesión: user_id={user_id}, curso_id={curso_id}, error={str(e)}')
-        return jsonify({'message': 'Error al crear la sesión', 'error': str(e)}), 500
+        return jsonify({'message': 'Error al crear la sesión'}), 500
 
 
 @estudiante_bp.route('/chat/sesiones/<string:sesion_id>', methods=['PATCH'])
 @jwt_required()
+@estudiante_required
 def rename_sesion(sesion_id):
     """Rename a chat session title."""
     user_id = get_jwt_identity()
@@ -362,6 +367,7 @@ def rename_sesion(sesion_id):
 
 @estudiante_bp.route('/chat/sesiones/<string:sesion_id>', methods=['DELETE'])
 @jwt_required()
+@estudiante_required
 def delete_sesion(sesion_id):
     """Soft-delete a chat session (sets is_active=False)."""
     user_id = get_jwt_identity()
@@ -380,6 +386,7 @@ def delete_sesion(sesion_id):
 
 @estudiante_bp.route('/chat/sesiones/<string:sesion_id>/mensajes', methods=['GET'])
 @jwt_required()
+@estudiante_required
 def get_mensajes(sesion_id):
     """Get all messages in a chat session in chronological order."""
     user_id = get_jwt_identity()
@@ -393,6 +400,7 @@ def get_mensajes(sesion_id):
 
 @estudiante_bp.route('/chat/sesiones/<string:sesion_id>/contexto', methods=['GET'])
 @jwt_required()
+@estudiante_required
 def get_sesion_contexto(sesion_id):
     """Get context information for a chat session (course info, enabled modes, etc)."""
     user_id = get_jwt_identity()
@@ -421,6 +429,7 @@ def get_sesion_contexto(sesion_id):
 
 @estudiante_bp.route('/chat/sesiones/<string:sesion_id>/mensaje', methods=['POST'])
 @jwt_required()
+@estudiante_required
 def send_mensaje(sesion_id):
     """Send a user message and receive an AI response via n8n."""
     user_id = get_jwt_identity()
@@ -479,7 +488,7 @@ def send_mensaje(sesion_id):
     )
     if not service_unavailable:
         _record_consumption(curso, user_id, 'chat_rag', contenido, respuesta_text, usage)
-        db.session.commit()
+    db.session.commit()
 
     return jsonify({
         'mensaje_usuario': msg_user.to_dict(),
@@ -496,6 +505,7 @@ def send_mensaje(sesion_id):
 
 @estudiante_bp.route('/agenda', methods=['GET'])
 @jwt_required()
+@estudiante_required
 def get_agenda():
     """Get upcoming activities for all courses the student is enrolled in."""
     user_id = get_jwt_identity()
@@ -506,6 +516,14 @@ def get_agenda():
         return jsonify({'actividades': [], 'total': 0}), 200
 
     estado = request.args.get('estado', 'vigente')
+    curso_id = request.args.get('curso_id', type=int)
+    if request.args.get('curso_id') is not None and curso_id is None:
+        return jsonify({'message': 'curso_id debe ser un entero'}), 400
+    if curso_id is not None:
+        if curso_id not in curso_ids:
+            return jsonify({'message': 'Curso no encontrado'}), 404
+        curso_ids = [curso_id]
+
     actividades = (
         ActividadAgenda.query
         .filter(
@@ -525,6 +543,7 @@ def get_agenda():
 
 @estudiante_bp.route('/chat/sesiones/<string:sesion_id>/recurso-sintetico', methods=['POST'])
 @jwt_required()
+@estudiante_required
 def recurso_sintetico(sesion_id):
     """Request a synthetic resource (summary, concept map, etc.) for the session topic."""
     user_id = get_jwt_identity()
@@ -566,8 +585,9 @@ def recurso_sintetico(sesion_id):
 
     try:
         respuesta_text, citas_json, usage, modo_aplicado = _call_n8n_chat(payload)
-    except Exception as e:
-        return jsonify({'message': f'Error al generar recurso: {str(e)}'}), 502
+    except Exception:
+        logger.exception('student_resource_n8n_unavailable', extra={'event': 'student_resource_n8n_unavailable'})
+        return jsonify({'message': 'No fue posible generar el recurso en este momento'}), 502
 
     msg_user, msg_assistant = _save_chat_exchange(
         sesion,
@@ -594,6 +614,7 @@ def recurso_sintetico(sesion_id):
 
 @estudiante_bp.route('/chat/sesiones/<string:sesion_id>/practicar', methods=['POST'])
 @jwt_required()
+@estudiante_required
 def ayuda_practica(sesion_id):
     """Guide the student through practicing an exercise or problem."""
     user_id = get_jwt_identity()
@@ -652,7 +673,7 @@ def ayuda_practica(sesion_id):
     )
     if not service_unavailable:
         _record_consumption(curso, user_id, 'practicar', ejercicio, respuesta_text, usage)
-        db.session.commit()
+    db.session.commit()
 
     return jsonify({
         'mensaje_usuario': msg_user.to_dict(),

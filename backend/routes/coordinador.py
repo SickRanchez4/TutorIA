@@ -8,9 +8,8 @@ Coordinator routes - Academic Management
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import json
-import os
 import logging
-import requests as http_requests
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -33,8 +32,8 @@ from models import (
 from models.user import User
 from models.role import Role
 from werkzeug.security import generate_password_hash
-from routes.auth_multi_tenant import coordinador_required
-from services.subscription_quota import subscription_summary
+from routes.auth_multi_tenant import coordinador_required, validate_password
+from services.subscription_quota import account_creation_allowed, subscription_summary
 from services.rag_ingestion import (
     RagIngestionError,
     course_knowledge_overview,
@@ -45,10 +44,9 @@ from services.rag_ingestion import (
     remove_indexed_document,
     retry_ingestion_job,
 )
+from services.validation import is_valid_email, normalize_email, parse_boolean
 
 coordinador_bp = Blueprint('coordinador', __name__)
-
-N8N_EMBEDDINGS_WEBHOOK_URL = os.environ.get('N8N_EMBEDDINGS_WEBHOOK_URL', '')
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -94,6 +92,7 @@ def _normalize_student_row(row):
     first_name = _pick_by_alias(row, ['first_name', 'nombre', 'nombres', 'name'])
     last_name = _pick_by_alias(row, ['last_name', 'apellido', 'apellidos', 'surname'])
     phone = _pick_by_alias(row, ['phone', 'telefono', 'celular', 'movil', 'phone_number'])
+    password = _pick_by_alias(row, ['password', 'contrasena', 'contraseña', 'clave'])
 
     # Excel often serializes phone numbers as floats (e.g. 71234567.0).
     # Normalize this format to plain digits when the decimal part is .0.
@@ -116,19 +115,45 @@ def _normalize_student_row(row):
         'first_name': (first_name or '').strip(),
         'last_name': (last_name or '').strip(),
         'phone': phone_clean,
+        'password': password,
     }
 
-DEFAULT_STUDENT_PASSWORD = 'password'
 
-def _get_or_create_estudiante(email, first_name, last_name, phone, institucion_id):
+class StudentTenantConflict(Exception):
+    """Raised when a globally unique email already belongs to another tenant."""
+
+
+class AccountLimitReached(Exception):
+    """Raised when creating another account would exceed the active plan."""
+
+
+def _get_or_create_estudiante(email, first_name, last_name, phone, password, institucion_id):
     """
     Find an existing user by email or create a new one with the 'estudiante' role.
-    New accounts get the default password DEFAULT_STUDENT_PASSWORD.
     Returns (user, created_bool). Does not commit; caller must commit/flush.
     """
+    email = normalize_email(email)
+    if not is_valid_email(email):
+        raise ValueError('Email inválido')
     usuario = User.query.filter_by(email=email).first()
     if usuario:
+        if str(usuario.institucion_id) != str(institucion_id):
+            raise StudentTenantConflict('El email pertenece a otra institución')
+        if 'estudiante' not in {role.name for role in usuario.roles}:
+            raise ValueError('La cuenta existente no tiene rol de estudiante')
         return usuario, False
+
+    is_valid, password_error = validate_password(password or '')
+    if not is_valid:
+        raise ValueError(password_error)
+
+    can_create, capacity_error = account_creation_allowed(institucion_id)
+    if not can_create:
+        raise AccountLimitReached(capacity_error or 'No se puede crear la cuenta')
+
+    estudiante_role = Role.query.filter_by(name='estudiante').first()
+    if not estudiante_role:
+        raise RuntimeError('Rol estudiante no configurado')
 
     usuario = User(
         email=email,
@@ -136,12 +161,10 @@ def _get_or_create_estudiante(email, first_name, last_name, phone, institucion_i
         last_name=last_name or '',
         phone=phone or '',
         institucion_id=institucion_id,
-        password_hash=generate_password_hash(DEFAULT_STUDENT_PASSWORD),
+        password_hash=generate_password_hash(password),
         is_active=True,
     )
-    estudiante_role = Role.query.filter_by(name='estudiante').first()
-    if estudiante_role:
-        usuario.roles.append(estudiante_role)
+    usuario.roles.append(estudiante_role)
     db.session.add(usuario)
     db.session.flush()  # Get the ID before commit
     return usuario, True
@@ -155,6 +178,21 @@ def _validate_institucion_scope(user, institucion_id):
     if str(user.institucion_id) != str(institucion_id):
         return jsonify({'message': 'Acceso denegado para otra institucion'}), 403
     return None
+
+
+def _get_tenant_student(user_id, institucion_id):
+    """Return a student account only when both role and tenant match."""
+    return (
+        User.query
+        .join(User.roles)
+        .filter(
+            User.id == user_id,
+            User.institucion_id == institucion_id,
+            Role.name == 'estudiante',
+        )
+        .first()
+    )
+
 
 def _read_excel_rows(file_storage):
     """Read and parse Excel file into list of dicts."""
@@ -187,12 +225,19 @@ def list_cursos():
         return jsonify({'message': 'Usuario sin institucion'}), 403
 
     cursos = Curso.query.filter_by(institucion_id=user.institucion_id).all()
+    counts = dict(
+        db.session.query(EstudianteCurso.curso_id, func.count(EstudianteCurso.id))
+        .filter(
+            EstudianteCurso.curso_id.in_([curso.id for curso in cursos]),
+            EstudianteCurso.is_active == True,
+        )
+        .group_by(EstudianteCurso.curso_id)
+        .all()
+    ) if cursos else {}
     cursos_data = []
     for c in cursos:
         curso_dict = c.to_dict()
-        # Count enrolled students
-        count_estudiantes = EstudianteCurso.query.filter_by(curso_id=c.id, is_active=True).count()
-        curso_dict['estudiantes_count'] = count_estudiantes
+        curso_dict['estudiantes_count'] = counts.get(c.id, 0)
         cursos_data.append(curso_dict)
     return jsonify({'cursos': cursos_data}), 200
 
@@ -219,12 +264,17 @@ def create_curso():
     if existing:
         return jsonify({'message': f'Ya existe un curso con codigo {data["codigo"]}'}), 409
 
+    try:
+        is_active = parse_boolean(data.get('is_active', True), 'is_active')
+    except ValueError as error:
+        return jsonify({'message': str(error)}), 400
+
     curso = Curso(
         institucion_id=user.institucion_id,
         nombre=data['nombre'].strip(),
         codigo=data['codigo'].strip(),
         descripcion=(data.get('descripcion') or '').strip() or None,
-        is_active=data.get('is_active', True)
+        is_active=is_active
     )
     db.session.add(curso)
     db.session.commit()
@@ -248,8 +298,8 @@ def import_cursos_excel():
 
     try:
         rows = _read_excel_rows(file)
-    except Exception as e:
-        return jsonify({'message': f'Error reading Excel: {str(e)}'}), 400
+    except Exception:
+        return jsonify({'message': 'El archivo Excel no es válido'}), 400
 
     if not rows:
         return jsonify({'message': 'Excel file is empty', 'created': 0, 'skipped': []}), 200
@@ -324,7 +374,10 @@ def update_curso(curso_id):
     if 'descripcion' in data:
         curso.descripcion = (data['descripcion'] or '').strip() or None
     if 'is_active' in data:
-        curso.is_active = bool(data['is_active'])
+        try:
+            curso.is_active = parse_boolean(data['is_active'], 'is_active')
+        except ValueError as error:
+            return jsonify({'message': str(error)}), 400
 
     db.session.commit()
     return jsonify({'message': 'Curso actualizado', 'curso': curso.to_dict()}), 200
@@ -347,9 +400,10 @@ def delete_curso(curso_id):
         db.session.delete(curso)
         db.session.commit()
         return jsonify({'message': f'Curso {nombre} eliminado permanentemente'}), 200
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({'message': f'Error al eliminar curso: {str(e)}'}), 500
+        logger.exception('course_delete_failed', extra={'event': 'course_delete_failed'})
+        return jsonify({'message': 'Error al eliminar curso'}), 500
 
 # ============================================================================
 # STUDENT ENROLLMENT ENDPOINTS
@@ -374,10 +428,12 @@ def list_estudiantes():
     if not estudiante_role:
         return jsonify({'estudiantes': []}), 200
 
-    estudiantes_users = [
-        u for u in estudiante_role.users
-        if u.institucion_id and str(u.institucion_id) == str(user.institucion_id)
-    ]
+    estudiantes_users = (
+        User.query
+        .join(User.roles)
+        .filter(User.institucion_id == user.institucion_id, Role.id == estudiante_role.id)
+        .all()
+    )
 
     curso_ids = [c.id for c in Curso.query.filter_by(institucion_id=user.institucion_id).all()]
     enrollments = (
@@ -428,7 +484,7 @@ def update_estudiante(user_id):
     if not user or not user.institucion_id:
         return jsonify({'message': 'Usuario sin institucion'}), 403
 
-    estudiante = User.query.filter_by(id=user_id, institucion_id=user.institucion_id).first()
+    estudiante = _get_tenant_student(user_id, user.institucion_id)
     if not estudiante:
         return jsonify({'message': 'Alumno no encontrado'}), 404
 
@@ -440,15 +496,23 @@ def update_estudiante(user_id):
     if 'phone' in data:
         estudiante.phone = (data['phone'] or '').strip()
     if 'email' in data:
-        new_email = (data['email'] or '').strip().lower()
-        if new_email and new_email != estudiante.email:
+        new_email = normalize_email(data['email'])
+        if not is_valid_email(new_email):
+            return jsonify({'message': 'Email inválido'}), 400
+        if new_email != estudiante.email:
             exists = User.query.filter(User.email == new_email, User.id != estudiante.id).first()
             if exists:
                 return jsonify({'message': 'Ya existe una cuenta con ese email'}), 409
             estudiante.email = new_email
     if 'is_active' in data:
-        estudiante.is_active = bool(data['is_active'])
+        try:
+            estudiante.is_active = parse_boolean(data['is_active'], 'is_active')
+        except ValueError as error:
+            return jsonify({'message': str(error)}), 400
     if data.get('password'):
+        is_valid, password_error = validate_password(data['password'])
+        if not is_valid:
+            return jsonify({'message': password_error}), 400
         estudiante.password_hash = generate_password_hash(data['password'])
 
     db.session.commit()
@@ -474,7 +538,7 @@ def delete_estudiante(user_id):
     if not user or not user.institucion_id:
         return jsonify({'message': 'Usuario sin institucion'}), 403
 
-    estudiante = User.query.filter_by(id=user_id, institucion_id=user.institucion_id).first()
+    estudiante = _get_tenant_student(user_id, user.institucion_id)
     if not estudiante:
         return jsonify({'message': 'Alumno no encontrado'}), 404
 
@@ -490,9 +554,10 @@ def delete_estudiante(user_id):
         db.session.delete(estudiante)
         db.session.commit()
         return jsonify({'message': f'Cuenta de {nombre} eliminada permanentemente'}), 200
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({'message': f'Error al eliminar cuenta: {str(e)}'}), 500
+        logger.exception('student_delete_failed', extra={'event': 'student_delete_failed'})
+        return jsonify({'message': 'Error al eliminar cuenta'}), 500
 
 @coordinador_bp.route('/cursos/<int:curso_id>/estudiantes', methods=['GET'])
 @jwt_required()
@@ -525,7 +590,7 @@ def list_estudiantes_curso(curso_id):
         return jsonify({'estudiantes': estudiantes}), 200
     except Exception as ex:
         logger.error(f'Error loading students for course {curso_id}: {str(ex)}', exc_info=True)
-        return jsonify({'message': 'Error loading students', 'error': str(ex)}), 500
+        return jsonify({'message': 'Error al cargar estudiantes'}), 500
 
 @coordinador_bp.route('/cursos/<int:curso_id>/estudiantes', methods=['POST'])
 @jwt_required()
@@ -538,24 +603,41 @@ def add_estudiante_curso(curso_id):
         return jsonify({'message': 'Curso no encontrado'}), 404
 
     data = request.get_json() or {}
-    email = (data.get('email') or '').strip().lower()
-    if not email:
-        return jsonify({'message': 'El email es requerido'}), 400
+    email = normalize_email(data.get('email'))
+    if not is_valid_email(email):
+        return jsonify({'message': 'Email inválido'}), 400
 
     first_name = (data.get('first_name') or '').strip()
     last_name = (data.get('last_name') or '').strip()
     phone = (data.get('phone') or '').strip()
+    password = data.get('password')
 
     # Si solo viene email (sin first_name/last_name/phone), es inscripción de alumno existente
     # Si vienen otros campos, es creación de nuevo alumno
     if not first_name and not last_name and not phone:
         # Buscar alumno existente - no crear si no existe
-        usuario = User.query.filter_by(email=email, institucion_id=user.institucion_id).first()
+        usuario = (
+            User.query
+            .join(User.roles)
+            .filter(
+                User.email == email,
+                User.institucion_id == user.institucion_id,
+                Role.name == 'estudiante',
+            )
+            .first()
+        )
         if not usuario:
             return jsonify({'message': 'El alumno con este email no existe. Usa la opción "Crear nuevo" para registrar un alumno nuevo'}), 404
     else:
         # Crear o actualizar alumno existente
-        usuario, _created = _get_or_create_estudiante(email, first_name, last_name, phone, user.institucion_id)
+        try:
+            usuario, _created = _get_or_create_estudiante(
+                email, first_name, last_name, phone, password, user.institucion_id,
+            )
+        except (StudentTenantConflict, AccountLimitReached) as error:
+            return jsonify({'message': str(error)}), 409
+        except ValueError as error:
+            return jsonify({'message': str(error)}), 400
 
     existing = EstudianteCurso.query.filter_by(user_id=usuario.id, curso_id=curso.id).first()
     if existing:
@@ -605,8 +687,8 @@ def import_estudiantes_curso_excel(curso_id):
 
     try:
         rows = _read_excel_rows(file)
-    except Exception as e:
-        return jsonify({'message': f'Error reading Excel: {str(e)}'}), 400
+    except Exception:
+        return jsonify({'message': 'El archivo Excel no es válido'}), 400
 
     created = 0
     enrolled = 0
@@ -618,12 +700,19 @@ def import_estudiantes_curso_excel(curso_id):
         first_name = normalized['first_name']
         last_name = normalized['last_name']
         phone = normalized['phone']
+        password = normalized['password']
 
         if not email or not first_name or not last_name:
             skipped.append({'row': row, 'reason': 'Missing email, first_name, or last_name'})
             continue
 
-        usuario, was_created = _get_or_create_estudiante(email, first_name, last_name, phone, user.institucion_id)
+        try:
+            usuario, was_created = _get_or_create_estudiante(
+                email, first_name, last_name, phone, password, user.institucion_id,
+            )
+        except (StudentTenantConflict, AccountLimitReached, ValueError) as error:
+            skipped.append({'email': email, 'reason': str(error)})
+            continue
         if was_created:
             created += 1
 
@@ -662,8 +751,8 @@ def import_alumnos_cursos_excel():
 
     try:
         rows = _read_excel_rows(file)
-    except Exception as e:
-        return jsonify({'message': f'Error reading Excel: {str(e)}'}), 400
+    except Exception:
+        return jsonify({'message': 'El archivo Excel no es válido'}), 400
 
     if not rows:
         return jsonify({'message': 'Excel file is empty', 'created': 0, 'enrolled': 0, 'skipped': []}), 200
@@ -682,6 +771,7 @@ def import_alumnos_cursos_excel():
         first_name = normalized['first_name']
         last_name = normalized['last_name']
         phone = normalized['phone']
+        password = normalized['password']
 
         if not email or not first_name or not last_name:
             skipped.append({
@@ -691,9 +781,13 @@ def import_alumnos_cursos_excel():
             continue
 
         # Create or get user
-        usuario, was_created = _get_or_create_estudiante(
-            email, first_name, last_name, phone, user.institucion_id
-        )
+        try:
+            usuario, was_created = _get_or_create_estudiante(
+                email, first_name, last_name, phone, password, user.institucion_id,
+            )
+        except (StudentTenantConflict, AccountLimitReached, ValueError) as error:
+            skipped.append({'email': email, 'reason': str(error)})
+            continue
         if was_created:
             created += 1
 
@@ -827,7 +921,10 @@ def update_agente_curso(curso_id):
 
     data = request.get_json() or {}
     if 'system_prompt' in data:
-        config.system_prompt = (data['system_prompt'] or '').strip() or DEFAULT_SYSTEM_PROMPT
+        system_prompt = (data['system_prompt'] or '').strip() or DEFAULT_SYSTEM_PROMPT
+        if len(system_prompt) > 2000:
+            return jsonify({'message': 'system_prompt no puede superar 2000 caracteres'}), 400
+        config.system_prompt = system_prompt
     if 'temperatura' in data:
         try:
             temp = float(data['temperatura'])
@@ -838,9 +935,14 @@ def update_agente_curso(curso_id):
         config.temperatura = temp
     if 'modos_permitidos' in data:
         modos = data['modos_permitidos']
-        config.modos_permitidos = ','.join(modos) if isinstance(modos, list) else str(modos)
+        if not isinstance(modos, list) or not all(modo in {'chat', 'practicar', 'recursos'} for modo in modos):
+            return jsonify({'message': 'modos_permitidos contiene valores no válidos'}), 400
+        config.modos_permitidos = ','.join(dict.fromkeys(modos))
     if 'extender_conocimiento' in data:
-        config.extender_conocimiento = bool(data['extender_conocimiento'])
+        try:
+            config.extender_conocimiento = parse_boolean(data['extender_conocimiento'], 'extender_conocimiento')
+        except ValueError as error:
+            return jsonify({'message': str(error)}), 400
 
     db.session.commit()
     return jsonify({'message': 'Configuración del agente actualizada', 'agente': config.to_dict()}), 200

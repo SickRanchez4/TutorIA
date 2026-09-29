@@ -7,7 +7,7 @@
           <h2 class="text-h5 font-weight-bold mb-1">Gestión de cursos</h2>
           <p class="mb-0 coord-subtext">Crea, activa y supervisa cursos en una experiencia unificada.</p>
         </div>
-        <div class="d-flex align-center ga-3">
+        <div class="d-flex align-center ga-3 courses-hero-action">
           <v-btn
             @click="showCreateModal = true"
             color="primary"
@@ -26,7 +26,7 @@
     <v-dialog v-model="showCreateModal" max-width="620">
       <v-card class="coord-dialog-card" rounded="xl" variant="flat">
         <v-card-title class="pt-5 pb-2 px-6">Nuevo curso</v-card-title>
-        <v-tabs v-model="activeTab" class="px-4" color="primary" density="comfortable">
+        <v-tabs v-model="activeTab" class="px-4 courses-dialog-tabs" color="primary" density="comfortable">
           <v-tab value="add" prepend-icon="mdi-plus-circle">Añadir curso</v-tab>
           <v-tab value="import" prepend-icon="mdi-file-excel">Importar desde Excel</v-tab>
         </v-tabs>
@@ -173,7 +173,7 @@
                       {{ curso.is_active ? 'Habilitado' : 'Inhabilitado' }}
                     </v-chip>
 
-                    <div class="d-flex ga-2">
+                    <div class="d-flex flex-wrap ga-2 course-actions">
                       <v-btn
                         @click="toggleActivo(curso)"
                         size="small"
@@ -209,9 +209,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { coordinadorService } from '../../services'
-import { useCoordinadorToast } from './useCoordinadorToast'
+import { coordinadorToast } from '../../composables/useToast'
 
-const { notify, notifyError } = useCoordinadorToast()
+const { notify, notifyError } = coordinadorToast
 const router = useRouter()
 
 const cursos = ref([])
@@ -416,5 +416,24 @@ onMounted(loadCursos)
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+@media (max-width: 599px) {
+  .coord-cursos-view { gap: 14px; }
+  .coord-hero :deep(.v-card-text) { align-items: stretch !important; padding: 16px !important; }
+  .courses-hero-action,
+  .courses-hero-action :deep(.v-btn) { width: 100%; }
+  .coord-surface-card :deep(.v-card-title),
+  .coord-surface-card :deep(.v-card-text) { padding-inline: 16px !important; }
+  .courses-dialog-tabs { max-width: 100%; overflow-x: auto; }
+  .courses-dialog-tabs :deep(.v-tab) { min-width: max-content; padding-inline: 10px; font-size: 0.74rem; }
+  .course-actions { width: 100%; }
+  .course-actions :deep(.v-btn) { flex: 1 1 120px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger-item,
+  .status-dot { animation: none !important; opacity: 1; transform: none; }
+  .coord-course-card--hover { transform: none; }
 }
 </style>

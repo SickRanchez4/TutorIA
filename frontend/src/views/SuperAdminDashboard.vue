@@ -1,37 +1,31 @@
 <template>
   <v-app class="admin-shell">
+    <RoleSidebar
+      v-model="mobileDrawer"
+      role="Administrador"
+      icon="mdi-shield-crown-outline"
+      :user-name="userName"
+      :items="adminNavItems"
+      :active="tab"
+      permanent-on-desktop
+      @select="tab = $event"
+      @logout="logout"
+    />
+
     <v-app-bar color="surface" elevation="0" class="admin-topbar" height="76">
-      <v-app-bar-title class="d-flex align-center py-2">
+      <v-app-bar-nav-icon v-if="!mdAndUp" aria-label="Abrir navegación" @click="mobileDrawer = true"></v-app-bar-nav-icon>
+      <v-app-bar-title class="admin-toolbar-title py-2">
         <div class="d-flex align-center ga-3">
           <div class="admin-brand-mark">
             <v-icon icon="mdi-shield-crown-outline" size="21"></v-icon>
           </div>
-          <div>
-            <p class="text-subtitle-1 font-weight-black mb-0">Control central</p>
-            <p class="admin-topbar-caption mb-0">Tutor<span>IA</span> · Super Admin</p>
-          </div>
+          <PanelTitle role="Administrador" />
         </div>
       </v-app-bar-title>
-
-      <v-spacer></v-spacer>
 
       <v-chip variant="flat" color="primary" class="mr-2 admin-user-chip" prepend-icon="mdi-account-circle-outline">
         {{ userName }}
       </v-chip>
-      <v-btn variant="tonal" color="error" prepend-icon="mdi-logout" class="admin-logout" @click="logout">
-        <span class="d-none d-sm-inline">Cerrar sesión</span>
-        <v-tooltip activator="parent" location="bottom">Cerrar sesión</v-tooltip>
-      </v-btn>
-
-      <template #extension>
-        <v-tabs v-model="tab" color="primary" align-tabs="start" class="admin-tabs">
-          <v-tab value="instituciones" prepend-icon="mdi-domain">Instituciones</v-tab>
-          <v-tab value="coordinadores" prepend-icon="mdi-account-tie-outline">Coordinadores</v-tab>
-          <v-tab value="suscripciones" prepend-icon="mdi-card-account-details-outline">Suscripciones</v-tab>
-          <v-tab value="planes" prepend-icon="mdi-package-variant-closed">Planes</v-tab>
-          <v-tab value="perfil" prepend-icon="mdi-account-circle">Perfil</v-tab>
-        </v-tabs>
-      </template>
     </v-app-bar>
 
     <v-snackbar
@@ -44,7 +38,7 @@
     </v-snackbar>
 
     <v-main class="admin-main fade-in">
-      <v-container fluid class="admin-content py-6 px-6" style="max-width: 1400px;">
+      <v-container fluid class="admin-content py-4 py-md-6 px-3 px-sm-4 px-md-6" style="max-width: 1400px;">
         <v-card class="admin-hero mb-6" rounded="xl" variant="flat">
           <v-card-text class="d-flex align-center justify-space-between flex-wrap ga-4 py-5 px-5 px-md-6">
             <div>
@@ -118,7 +112,7 @@
               <p v-else-if="!instituciones.length" class="text-body-2 text-medium-emphasis">Sin instituciones.</p>
               <v-list v-else density="comfortable" class="pa-0">
                 <v-list-item v-for="inst in instituciones" :key="inst.id" class="px-0 mb-1">
-                  <div class="d-flex align-center justify-space-between w-100 ga-4">
+                  <div class="d-flex align-center justify-space-between w-100 ga-4 admin-list-row">
                     <div class="flex-grow-1">
                       <div v-if="editInstId === inst.id" class="d-flex flex-column ga-2">
                         <v-text-field v-model="editInst.nombre" density="compact" hide-details label="Nombre" />
@@ -188,9 +182,9 @@
               <p v-else-if="!coordinadores.length" class="text-body-2 text-medium-emphasis">Sin coordinadores.</p>
               <v-list v-else density="comfortable" class="pa-0">
                 <v-list-item v-for="c in coordinadores" :key="c.id" class="px-0 mb-1">
-                  <div class="d-flex align-center justify-space-between w-100 ga-4">
+                  <div class="d-flex align-center justify-space-between w-100 ga-4 admin-list-row">
                     <div class="flex-grow-1">
-                      <v-row v-if="editCoordId === c.id" dense>
+                      <v-row v-if="editCoordId === c.id" density="compact">
                         <v-col cols="6"><v-text-field v-model="editCoord.first_name" label="Nombres" density="compact" hide-details /></v-col>
                         <v-col cols="6"><v-text-field v-model="editCoord.last_name" label="Apellidos" density="compact" hide-details /></v-col>
                         <v-col cols="6"><v-text-field v-model="editCoord.email" label="Correo electrónico" density="compact" hide-details /></v-col>
@@ -229,6 +223,15 @@
                     <v-text-field v-model="newCoord.last_name" label="Apellidos" density="compact" class="mb-2" />
                     <v-text-field v-model="newCoord.email" label="Correo" density="compact" class="mb-2" />
                     <v-text-field v-model="newCoord.phone" label="Teléfono" density="compact" class="mb-3" />
+                    <v-text-field
+                      v-model="newCoord.password"
+                      label="Contraseña inicial"
+                      type="password"
+                      hint="8+ caracteres, mayúscula, minúscula, número y símbolo"
+                      persistent-hint
+                      density="compact"
+                      class="mb-3"
+                    />
                     <div class="d-flex justify-end ga-2">
                       <v-btn variant="text" @click="showNewCoordDialog = false">Cancelar</v-btn>
                       <v-btn type="submit" color="primary">Crear coordinador</v-btn>
@@ -263,9 +266,9 @@
               <p v-if="!planes.length" class="text-body-2 text-medium-emphasis">Sin planes.</p>
               <v-list v-else density="comfortable" class="pa-0">
                 <v-list-item v-for="p in planes" :key="p.id" class="px-0 mb-1">
-                  <div class="d-flex align-center justify-space-between w-100 ga-4">
+                  <div class="d-flex align-center justify-space-between w-100 ga-4 admin-list-row">
                     <div class="flex-grow-1">
-                      <v-row v-if="editPlanId === p.id" dense>
+                      <v-row v-if="editPlanId === p.id" density="compact">
                         <v-col cols="4"><v-text-field v-model="editPlan.nombre" label="Nombre del plan" density="compact" hide-details /></v-col>
                         <v-col cols="4"><v-text-field v-model.number="editPlan.max_cuentas" type="number" min="1" label="Máx. cuentas" density="compact" hide-details /></v-col>
                         <v-col cols="4"><v-text-field v-model.number="editPlan.max_almacenamiento_gb" type="number" min="1" label="Máx. GB" density="compact" hide-details /></v-col>
@@ -333,7 +336,7 @@
               <p v-if="!suscripciones.length" class="text-body-2 text-medium-emphasis">Sin suscripciones.</p>
               <v-list v-else density="comfortable" class="pa-0">
                 <v-list-item v-for="s in suscripciones" :key="s.id" class="px-0 mb-2">
-                  <div v-if="editSubId !== s.id" class="d-flex align-center justify-space-between w-100 ga-4">
+                  <div v-if="editSubId !== s.id" class="d-flex align-center justify-space-between w-100 ga-4 admin-list-row">
                     <div>
                       <p class="text-body-2 font-weight-medium mb-0">{{ institucionNombre(s.institucion_id) }}</p>
                       <p class="text-caption text-medium-emphasis mb-0">{{ planNombre(s.plan_id) }} · {{ s.limite_tokens_mensual?.toLocaleString() }} tokens/mes</p>
@@ -347,7 +350,7 @@
                   </div>
                   <v-card v-else class="pa-4 w-100" variant="tonal" color="primary" border>
                     <p class="text-body-2 font-weight-bold mb-3">Editar suscripción de {{ institucionNombre(s.institucion_id) }}</p>
-                    <v-row dense>
+                    <v-row density="compact">
                       <v-col cols="12" md="6">
                         <v-select
                           v-model.number="editSub.plan_id"
@@ -386,30 +389,13 @@
         </v-row>
 
         <!-- Perfil -->
-        <v-row v-show="tab === 'perfil'">
-          <v-col cols="12" md="6">
-            <v-card class="pa-5" border elevation="1">
-              <h3 class="text-subtitle-1 font-weight-bold mb-4">Mi Perfil</h3>
-              <v-form @submit.prevent="updateProfile" class="mb-4">
-                <v-text-field v-model="profileData.first_name" label="Nombres" class="mb-2" />
-                <v-text-field v-model="profileData.last_name" label="Apellidos" class="mb-2" />
-                <v-text-field v-model="profileData.phone" label="Telefono" class="mb-3" />
-                <v-btn type="submit" color="primary" block>Guardar cambios</v-btn>
-              </v-form>
-            </v-card>
-          </v-col>
-          <v-col cols="12" md="6">
-            <v-card class="pa-5" border elevation="1">
-              <h3 class="text-subtitle-1 font-weight-bold mb-4">Cambiar Contrasena</h3>
-              <v-form @submit.prevent="updatePassword">
-                <v-text-field v-model="passwordForm.current" type="password" label="Contrasena actual" class="mb-2" />
-                <v-text-field v-model="passwordForm.new" type="password" label="Nueva contrasena" class="mb-2" />
-                <v-text-field v-model="passwordForm.confirm" type="password" label="Confirmar nueva contrasena" class="mb-3" />
-                <v-btn type="submit" color="primary" block>Cambiar contrasena</v-btn>
-              </v-form>
-            </v-card>
-          </v-col>
-        </v-row>
+        <ProfileSection
+          v-show="tab === 'perfil'"
+          :profile="profileData"
+          @update-profile="updateProfile"
+          @update-password="updatePassword"
+          @notify="({ message, isError }) => notify(message, isError)"
+        />
       </v-container>
     </v-main>
   </v-app>
@@ -420,9 +406,16 @@ import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { superAdminService } from '../services'
 import { useAuthStore } from '../stores/auth'
+import ProfileSection from '../components/ProfileSection.vue'
+import RoleSidebar from '../components/RoleSidebar.vue'
+import PanelTitle from '../components/PanelTitle.vue'
+import { createToast } from '../composables/useToast'
+import { useDisplay } from 'vuetify'
 
 const authStore = useAuthStore()
 const router = useRouter()
+const { mdAndUp } = useDisplay()
+const mobileDrawer = ref(mdAndUp.value)
 
 const instituciones = ref([])
 const planes = ref([])
@@ -430,23 +423,16 @@ const suscripciones = ref([])
 const coordinadores = ref([])
 const loading = ref(false)
 const loadingCoordinadores = ref(false)
-const toast = ref('')
-const toastError = ref(false)
+const { message: toast, isError: toastError, notify } = createToast()
 
 // Profile & Password
 const profileData = ref({ first_name: '', last_name: '', phone: '' })
-const passwordForm = ref({ current: '', new: '', confirm: '' })
-
-function notify(msg, isError = false) {
-  toast.value = msg
-  toastError.value = isError
-  setTimeout(() => { toast.value = '' }, 3500)
-}
 
 function logout() {
   authStore.logout()
   router.push('/login')
 }
+
 
 async function loadAll() {
   loading.value = true
@@ -462,7 +448,7 @@ async function loadAll() {
     if (selectedInstId.value) {
       await loadCoordinadores()
     }
-  } catch (err) {
+  } catch {
     notify('No se pudieron cargar los datos', true)
   } finally {
     loading.value = false
@@ -529,16 +515,6 @@ async function removeInstitucion(inst) {
     await loadAll()
   } catch (err) {
     notify(err.response?.data?.message || 'No se pudo eliminar la institución', true)
-  }
-}
-
-async function toggleActive(inst) {
-  try {
-    await superAdminService.toggleActive(inst.id)
-    notify('Estado actualizado')
-    await loadAll()
-  } catch (err) {
-    notify(err.response?.data?.message || 'No se pudo cambiar el estado', true)
   }
 }
 
@@ -681,7 +657,7 @@ async function removeSuscripcion(item) {
 
 /* ---------- Coordinadores ---------- */
 const selectedInstId = ref('')
-const newCoord = ref({ first_name: '', last_name: '', email: '', phone: '' })
+const newCoord = ref({ first_name: '', last_name: '', email: '', phone: '', password: '' })
 const editCoordId = ref('')
 const editCoord = ref({ first_name: '', last_name: '', email: '', phone: '' })
 const showNewCoordDialog = ref(false)
@@ -717,7 +693,7 @@ async function createCoordinador() {
   try {
     await superAdminService.createCoordinador(selectedInstId.value, { ...newCoord.value })
     notify('Coordinador creado exitosamente')
-    newCoord.value = { first_name: '', last_name: '', email: '', phone: '' }
+    newCoord.value = { first_name: '', last_name: '', email: '', phone: '', password: '' }
     showNewCoordDialog.value = false
     await loadCoordinadores()
   } catch (err) {
@@ -773,6 +749,13 @@ async function removeCoord(c) {
 }
 
 const tab = ref('instituciones')
+const adminNavItems = [
+  { value: 'instituciones', label: 'Instituciones', icon: 'mdi-domain' },
+  { value: 'coordinadores', label: 'Coordinadores', icon: 'mdi-account-tie-outline' },
+  { value: 'suscripciones', label: 'Suscripciones', icon: 'mdi-card-account-details-outline' },
+  { value: 'planes', label: 'Planes', icon: 'mdi-package-variant-closed' },
+  { value: 'perfil', label: 'Perfil', icon: 'mdi-account-circle' },
+]
 
 function instSubEstado(instId) {
   const sub = suscripciones.value.find(s => s.institucion_id === instId)
@@ -823,34 +806,20 @@ async function loadProfile() {
   }
 }
 
-async function updateProfile() {
+async function updateProfile(profile) {
   try {
-    const resp = await superAdminService.updateProfile({
-      first_name: profileData.value.first_name,
-      last_name: profileData.value.last_name,
-      phone: profileData.value.phone
-    })
+    const resp = await superAdminService.updateProfile(profile)
     authStore.setUserData(resp.user)
+    profileData.value = { ...profile }
     notify('Perfil actualizado exitosamente')
   } catch (err) {
     notify(err.response?.data?.message || 'Error al actualizar perfil', true)
   }
 }
 
-async function updatePassword() {
-  if (passwordForm.value.new !== passwordForm.value.confirm) {
-    return notify('Las nuevas contrasenas no coinciden', true)
-  }
-  if (passwordForm.value.new.length < 8) {
-    return notify('La contrasena debe tener al menos 8 caracteres', true)
-  }
-  
+async function updatePassword(password) {
   try {
-    await superAdminService.updatePassword({
-      current_password: passwordForm.value.current,
-      new_password: passwordForm.value.new
-    })
-    passwordForm.value = { current: '', new: '', confirm: '' }
+    await superAdminService.updatePassword(password)
     notify('Contrasena actualizada exitosamente')
   } catch (err) {
     notify(err.response?.data?.message || 'Error al cambiar contrasena', true)
@@ -875,6 +844,9 @@ async function updatePassword() {
   backdrop-filter: blur(16px);
 }
 
+.admin-toolbar-title { flex: 1 1 0; min-width: 0; }
+.admin-brand-mark { flex-shrink: 0; }
+
 .admin-brand-mark {
   display: grid;
   width: 38px;
@@ -887,41 +859,12 @@ async function updatePassword() {
   box-shadow: 0 0 20px rgba(124, 197, 118, 0.2);
 }
 
-.admin-topbar-caption {
-  color: rgba(231, 241, 231, 0.54);
-  font-size: 0.67rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.admin-topbar-caption span, .admin-overline { color: #9be692; }
+.admin-overline { color: #9be692; }
 
 .admin-user-chip {
   color: #132313 !important;
   font-weight: 800;
   box-shadow: 0 0 18px rgba(124, 197, 118, 0.22);
-}
-
-.admin-logout {
-  border: 1px solid rgba(255, 128, 128, 0.26);
-  border-radius: 11px;
-  font-weight: 750;
-}
-
-.admin-tabs { padding-inline: 16px; }
-
-.admin-tabs :deep(.v-tab) {
-  min-height: 46px;
-  border-radius: 10px 10px 0 0;
-  color: rgba(231, 238, 231, 0.64);
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.admin-tabs :deep(.v-tab--selected) {
-  color: #b4efa9;
-  background: rgba(124, 197, 118, 0.08);
 }
 
 .admin-hero, .admin-content :deep(.v-card) {
@@ -1050,12 +993,34 @@ async function updatePassword() {
   100% { box-shadow: 0 0 0 0 rgba(142, 228, 134, 0); }
 }
 
+@media (max-width: 959px) {
+  .admin-user-chip { max-width: min(190px, 28vw); }
+  .admin-user-chip :deep(.v-chip__content) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .admin-list-row { flex-wrap: wrap; }
+}
+
 @media (max-width: 600px) {
-  .admin-content { padding: 20px !important; }
-  .admin-tabs { padding-inline: 4px; overflow-x: auto; }
-  .admin-tabs :deep(.v-tab) { font-size: 0.7rem; padding-inline: 11px; }
-  .admin-user-chip { max-width: 150px; }
+  .admin-content { padding-inline: 12px !important; }
+  .admin-user-chip {
+    width: 34px;
+    min-width: 34px;
+    max-width: 34px;
+    padding-inline: 0 !important;
+  }
+  .admin-user-chip :deep(.v-chip__content) { display: none; }
+  .admin-user-chip :deep(.v-chip__prepend) { margin-inline: auto; }
+  .admin-brand-mark { width: 36px; height: 36px; }
+  .admin-hero { margin-bottom: 16px !important; }
+  .admin-hero :deep(.v-card-text) { padding: 18px 16px !important; }
+  .admin-list-row { align-items: flex-start !important; flex-direction: column; }
+  .admin-list-row > .d-flex:last-child { width: 100%; flex-wrap: wrap; }
   .admin-hero-status { width: 100%; justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-main,
+  .admin-stat-card { animation: none !important; transition: none !important; }
+  .admin-stat-card:hover { transform: none; }
 }
 </style>
 

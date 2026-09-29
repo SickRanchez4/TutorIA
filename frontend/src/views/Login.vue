@@ -2,11 +2,38 @@
   <v-app class="auth-app">
     <v-main class="auth-main">
       <section class="auth-page" aria-labelledby="login-title">
+        <!-- Filtros SVG: distorsión líquida (feTurbulence + feDisplacementMap) -->
+        <svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
+          <defs>
+            <filter id="liquid-distort" x="-35%" y="-35%" width="170%" height="170%">
+              <feTurbulence type="fractalNoise" baseFrequency="0.009 0.013" numOctaves="2" seed="7" result="noise">
+                <animate
+                  attributeName="baseFrequency"
+                  dur="22s"
+                  values="0.009 0.013;0.014 0.009;0.009 0.013"
+                  repeatCount="indefinite"
+                />
+              </feTurbulence>
+              <feDisplacementMap in="SourceGraphic" in2="noise" scale="46" xChannelSelector="R" yChannelSelector="G" />
+            </filter>
+            <filter id="liquid-edge" x="-20%" y="-20%" width="140%" height="140%">
+              <feTurbulence type="turbulence" baseFrequency="0.02 0.03" numOctaves="1" seed="3" result="noise">
+                <animate
+                  attributeName="baseFrequency"
+                  dur="14s"
+                  values="0.02 0.03;0.03 0.02;0.02 0.03"
+                  repeatCount="indefinite"
+                />
+              </feTurbulence>
+              <feDisplacementMap in="SourceGraphic" in2="noise" scale="7" xChannelSelector="R" yChannelSelector="G" />
+            </filter>
+          </defs>
+        </svg>
+
+        <!-- Red sináptica viva (canvas, reacciona al cursor) -->
+        <SynapseBackdrop />
         <div class="auth-noise"></div>
-        <div class="auth-grid"></div>
-        <div class="auth-orb auth-orb--one"></div>
-        <div class="auth-orb auth-orb--two"></div>
-        <div class="auth-orb auth-orb--three"></div>
+        <div class="auth-vignette"></div>
 
         <v-container class="auth-container pa-4 pa-sm-6 pa-lg-8" fluid>
           <v-row class="auth-layout align-center" no-gutters>
@@ -15,47 +42,56 @@
                 <div class="brand-row d-flex align-center mb-10">
                   <div class="brand-symbol" aria-hidden="true">
                     <v-icon icon="mdi-brain" size="26"></v-icon>
+                    <span class="brand-symbol-ring"></span>
                   </div>
                   <div>
                     <p class="brand-name mb-0">Tutor<span>IA</span></p>
+                    <p class="brand-caption mb-0">Plataforma educativa con IA</p>
                   </div>
                 </div>
 
                 <div class="hero-copy">
                   <h1 id="login-title">
                     Aprende con
-                    <span>Inteligencia.</span>
+                    <span class="hero-word-slot">
+                      <Transition name="word" mode="out-in">
+                        <span :key="rotatingWord" class="hero-word">{{ rotatingWord }}</span>
+                      </Transition>
+                    </span>
                   </h1>
                   <p class="hero-description">
-                    Tu espacio para crecer con IA.
+                    Tu espacio para crecer con IA. Conocimiento de tu institución,
+                    conversaciones que enseñan.
                   </p>
                 </div>
 
-                <div class="learning-orbit mt-10" aria-label="Características de TutorIA">
-                  <div class="orbit-line orbit-line--one"></div>
-                  <div class="orbit-line orbit-line--two"></div>
-                  <div class="orbit-core">
-                    <v-icon icon="mdi-sparkles" size="23"></v-icon>
-                  </div>
-                  <div class="orbit-card orbit-card--top">
-                    <v-icon icon="mdi-chart-timeline-variant-shimmer" size="19"></v-icon>
-                    <div>
-                      <strong>Aprendizaje real</strong>
-                      <span>conexión IA y estudiantes</span>
+                <!-- Línea de señal: el conocimiento viaja del núcleo a cada pilar -->
+                <div class="signal-strip mt-12" aria-label="Características de TutorIA">
+                  <svg class="signal-svg" viewBox="0 0 560 56" preserveAspectRatio="none" aria-hidden="true">
+                    <path class="signal-path signal-path--base" d="M4 28 C 90 4, 150 52, 236 28 S 400 4, 556 28" />
+                    <path class="signal-path signal-path--pulse" d="M4 28 C 90 4, 150 52, 236 28 S 400 4, 556 28" />
+                  </svg>
+                  <div class="signal-cards">
+                    <div class="signal-card">
+                      <v-icon icon="mdi-chart-timeline-variant-shimmer" size="19"></v-icon>
+                      <div>
+                        <strong>Aprendizaje real</strong>
+                        <span>conexión IA y estudiantes</span>
+                      </div>
                     </div>
-                  </div>
-                  <div class="orbit-card orbit-card--left">
-                    <v-icon icon="mdi-account-group-outline" size="19"></v-icon>
-                    <div>
-                      <strong>Gestión de grupos</strong>
-                      <span>administra el conocimiento</span>
+                    <div class="signal-card">
+                      <v-icon icon="mdi-account-group-outline" size="19"></v-icon>
+                      <div>
+                        <strong>Gestión de grupos</strong>
+                        <span>administra el conocimiento</span>
+                      </div>
                     </div>
-                  </div>
-                  <div class="orbit-card orbit-card--right">
-                    <v-icon icon="mdi-shield-check-outline" size="19"></v-icon>
-                    <div>
-                      <strong>Entorno protegido</strong>
-                      <span>para cada institución</span>
+                    <div class="signal-card">
+                      <v-icon icon="mdi-shield-check-outline" size="19"></v-icon>
+                      <div>
+                        <strong>Entorno protegido</strong>
+                        <span>para cada institución</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -67,13 +103,28 @@
                 <div class="mobile-brand d-flex d-lg-none align-center mb-8">
                   <div class="brand-symbol" aria-hidden="true">
                     <v-icon icon="mdi-brain" size="23"></v-icon>
+                    <span class="brand-symbol-ring"></span>
                   </div>
                   <div>
                     <p class="brand-name mb-0">Tutor<span>IA</span></p>
+                    <p class="brand-caption mb-0">Plataforma educativa con IA</p>
                   </div>
                 </div>
 
-                <v-card class="auth-panel pa-5 pa-sm-8" rounded="xl">
+                <!-- Cristal líquido: blob distorsionado detrás del panel -->
+                <div class="liquid-stage" aria-hidden="true">
+                  <div class="liquid-blob liquid-blob--a"></div>
+                  <div class="liquid-blob liquid-blob--b"></div>
+                </div>
+
+                <v-card
+                  class="auth-panel pa-5 pa-sm-8"
+                  rounded="xl"
+                  :style="panelStyle"
+                  @pointermove="onPanelPointerMove"
+                  @pointerleave="resetPanelTilt"
+                >
+                  <div class="panel-spotlight" aria-hidden="true"></div>
                   <div class="panel-topline"></div>
                   <div class="d-flex align-start justify-space-between ga-3 mb-7">
                     <div>
@@ -167,9 +218,10 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import SynapseBackdrop from '../components/SynapseBackdrop.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -242,6 +294,62 @@ const handleSubmit = async () => {
     else router.push('/login')
   }
 }
+
+/* ============================================================
+   Capa visual — sin efecto sobre la lógica de autenticación
+   ============================================================ */
+
+const prefersReducedMotion =
+  typeof window !== 'undefined' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+/* --- Palabra rotativa del titular --- */
+const rotatingWords = ['Inteligencia.', 'Curiosidad.', 'Propósito.', 'Confianza.']
+const wordIndex = ref(0)
+const rotatingWord = computed(() => rotatingWords[wordIndex.value])
+let wordTimer = null
+
+/* --- Tilt 3D + spotlight del panel --- */
+const tilt = ref({ rx: 0, ry: 0, px: 50, py: 50, glow: 0 })
+
+const panelStyle = computed(() => ({
+  '--tilt-x': `${tilt.value.rx}deg`,
+  '--tilt-y': `${tilt.value.ry}deg`,
+  '--spot-x': `${tilt.value.px}%`,
+  '--spot-y': `${tilt.value.py}%`,
+  '--spot-glow': tilt.value.glow
+}))
+
+function onPanelPointerMove(event) {
+  if (prefersReducedMotion) return
+  const rect = event.currentTarget.getBoundingClientRect()
+  const px = (event.clientX - rect.left) / rect.width
+  const py = (event.clientY - rect.top) / rect.height
+  tilt.value = {
+    rx: (0.5 - py) * 5,
+    ry: (px - 0.5) * 5,
+    px: px * 100,
+    py: py * 100,
+    glow: 1
+  }
+}
+
+function resetPanelTilt() {
+  tilt.value = { rx: 0, ry: 0, px: 50, py: 50, glow: 0 }
+}
+
+/* --- Ciclo de vida --- */
+onMounted(() => {
+  if (!prefersReducedMotion) {
+    wordTimer = setInterval(() => {
+      wordIndex.value = (wordIndex.value + 1) % rotatingWords.length
+    }, 3600)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (wordTimer) clearInterval(wordTimer)
+})
 </script>
 
 <style scoped>
@@ -256,121 +364,159 @@ const handleSubmit = async () => {
   padding-block: 24px;
   background: radial-gradient(100% 90% at 0% 0%, rgba(124, 197, 118, 0.12), transparent 55%), radial-gradient(70% 110% at 100% 100%, rgba(69, 148, 113, 0.13), transparent 58%), linear-gradient(127deg, #111419 0%, #171b20 52%, #121518 100%);
 }
+.svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 .auth-container { position: relative; z-index: 2; max-width: 1500px; }
 .auth-layout { min-height: auto; }
-.auth-noise, .auth-grid { position: absolute; inset: 0; pointer-events: none; }
+.auth-noise, .auth-vignette { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 .auth-noise {
-  z-index: -1;
-  opacity: 0.28;
+  opacity: 0.24;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
 }
-.auth-grid {
-  z-index: -1;
-  opacity: 0.4;
-  background-image: linear-gradient(rgba(180, 216, 190, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(180, 216, 190, 0.045) 1px, transparent 1px);
-  background-size: 54px 54px;
-  mask-image: radial-gradient(ellipse at 32% 50%, black 0%, transparent 64%);
-}
-.auth-orb { position: absolute; z-index: -1; border-radius: 50%; filter: blur(8px); pointer-events: none; }
-.auth-orb--one {
-  top: -175px; left: 22%; width: 460px; height: 460px;
-  background: radial-gradient(circle, rgba(124, 197, 118, 0.2) 0%, rgba(124, 197, 118, 0) 68%);
-  animation: float-one 13s ease-in-out infinite alternate;
-}
-.auth-orb--two {
-  right: -170px; bottom: -200px; width: 560px; height: 560px;
-  background: radial-gradient(circle, rgba(75, 168, 126, 0.17) 0%, rgba(75, 168, 126, 0) 68%);
-  animation: float-two 16s ease-in-out infinite alternate;
-}
-.auth-orb--three {
-  top: 38%; left: 47%; width: 160px; height: 160px;
-  background: radial-gradient(circle, rgba(230, 255, 232, 0.12), transparent 69%);
-  animation: breathe 5s ease-in-out infinite;
+.auth-vignette {
+  background: radial-gradient(120% 95% at 50% 42%, transparent 42%, rgba(9, 11, 13, 0.55) 100%);
 }
 .auth-story { animation: story-enter 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .brand-row, .mobile-brand { gap: 12px; }
 .brand-symbol {
+  position: relative;
   display: grid; width: 48px; height: 48px; place-items: center;
   border: 1px solid rgba(155, 226, 153, 0.45); border-radius: 16px; color: #b6f2aa;
   background: linear-gradient(145deg, rgba(124, 197, 118, 0.24), rgba(124, 197, 118, 0.06));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 26px rgba(124, 197, 118, 0.2);
 }
+.brand-symbol-ring {
+  position: absolute; inset: -6px; border-radius: 20px;
+  border: 1px solid rgba(124, 197, 118, 0.28);
+  animation: ring-pulse 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
 .brand-name { color: #f4f8f4; font-size: 1.25rem; font-weight: 800; letter-spacing: -0.045em; }
 .brand-name span { color: #9be692; }
 .brand-caption { color: rgba(226, 235, 227, 0.58); font-size: 0.69rem; font-weight: 600; letter-spacing: 0.025em; }
-.live-label { display: inline-flex; align-items: center; gap: 9px; color: #b7e9b0; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
-.live-dot, .connection-pulse { width: 8px; height: 8px; border-radius: 50%; background: #92e487; box-shadow: 0 0 0 0 rgba(146, 228, 135, 0.65); animation: status-pulse 2s infinite; }
+.connection-pulse { width: 8px; height: 8px; border-radius: 50%; background: #92e487; box-shadow: 0 0 0 0 rgba(146, 228, 135, 0.65); animation: status-pulse 2s infinite; }
 .hero-copy h1 { max-width: 650px; color: #f7faf7; font-size: clamp(3.1rem, 5.2vw, 5.3rem); font-weight: 800; letter-spacing: -0.065em; line-height: 0.98; }
-.hero-copy h1 span { display: block; color: #9ce294; text-shadow: 0 0 38px rgba(124, 197, 118, 0.26); }
-.hero-description { max-width: 530px; margin-top: 26px; color: rgba(235, 242, 235, 0.68); font-size: 1.08rem; line-height: 1.65; }
-.learning-orbit { position: relative; width: min(100%, 580px); height: 196px; }
-.orbit-core {
-  position: absolute; top: 69px; left: 50%; display: grid; width: 60px; height: 60px; place-items: center;
-  border: 1px solid rgba(162, 238, 151, 0.55); border-radius: 50%; color: #d5ffd0;
-  background: radial-gradient(circle at 35% 30%, #87cf7e, #356d48);
-  box-shadow: 0 0 0 10px rgba(124, 197, 118, 0.06), 0 0 35px rgba(124, 197, 118, 0.33);
-  transform: translateX(-50%); animation: core-pulse 4s ease-in-out infinite;
+.hero-word-slot { display: block; min-height: 1.02em; }
+.hero-word {
+  display: inline-block; color: #9ce294;
+  text-shadow: 0 0 38px rgba(124, 197, 118, 0.26);
 }
-.orbit-line { position: absolute; height: 1px; transform-origin: left center; background: linear-gradient(90deg, rgba(139, 220, 132, 0.65), rgba(139, 220, 132, 0)); }
-.orbit-line--one { top: 98px; left: 16%; width: 35%; transform: rotate(-27deg); }
-.orbit-line--two { top: 97px; left: 52%; width: 32%; transform: rotate(24deg); }
-.orbit-card {
-  position: absolute; display: flex; align-items: center; gap: 11px; min-width: 182px; padding: 11px 13px;
+.word-enter-active, .word-leave-active { transition: opacity 0.45s ease, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), filter 0.45s ease; }
+.word-enter-from { opacity: 0; transform: translateY(0.35em); filter: blur(6px); }
+.word-leave-to { opacity: 0; transform: translateY(-0.3em); filter: blur(6px); }
+.hero-description { max-width: 530px; margin-top: 26px; color: rgba(235, 242, 235, 0.68); font-size: 1.08rem; line-height: 1.65; }
+
+/* --- Línea de señal --- */
+.signal-strip { position: relative; width: min(100%, 620px); }
+.signal-svg { position: absolute; top: -30px; left: 0; width: 100%; height: 56px; overflow: visible; }
+.signal-path { fill: none; stroke-width: 1.5; }
+.signal-path--base { stroke: rgba(124, 197, 118, 0.16); }
+.signal-path--pulse {
+  stroke: rgba(164, 233, 149, 0.85);
+  stroke-dasharray: 46 620;
+  stroke-linecap: round;
+  animation: signal-travel 5.5s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(124, 197, 118, 0.55));
+}
+.signal-cards { display: flex; gap: 14px; }
+.signal-card {
+  display: flex; flex: 1; align-items: center; gap: 11px; min-width: 0; padding: 12px 13px;
   border: 1px solid rgba(191, 236, 185, 0.16); border-radius: 13px; color: #a7e6a0;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 30px rgba(0, 0, 0, 0.15); backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 30px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(10px);
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
 }
-.orbit-card strong, .orbit-card span { display: block; }
-.orbit-card strong { color: #ecf7eb; font-size: 0.76rem; font-weight: 700; }
-.orbit-card span { margin-top: 2px; color: rgba(229, 241, 229, 0.57); font-size: 0.65rem; }
-.orbit-card--top { top: 0; left: 50%; transform: translateX(-50%); animation: float-card-top 5s ease-in-out infinite; }
-.orbit-card--left { bottom: 0; left: 0; animation: float-card 5.5s ease-in-out infinite 0.4s; }
-.orbit-card--right { right: 0; bottom: 0; animation: float-card 4.8s ease-in-out infinite 0.8s; }
-.trust-row { display: flex; align-items: center; gap: 9px; color: rgba(219, 233, 220, 0.56); font-size: 0.76rem; }
-.trust-row :deep(.v-icon) { color: #9adf92; }
-.auth-panel-wrap { width: 100%; animation: panel-enter 0.8s 0.08s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.signal-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(164, 233, 149, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 36px rgba(0, 0, 0, 0.22), 0 0 24px rgba(124, 197, 118, 0.12);
+}
+.signal-card strong, .signal-card span { display: block; }
+.signal-card strong { color: #ecf7eb; font-size: 0.76rem; font-weight: 700; }
+.signal-card span { margin-top: 2px; color: rgba(229, 241, 229, 0.57); font-size: 0.65rem; }
+
+/* --- Panel con cristal líquido + tilt --- */
+.auth-panel-wrap {
+  position: relative;
+  width: 100%;
+  perspective: 1100px;
+  animation: panel-enter 0.8s 0.08s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.liquid-stage { position: absolute; inset: -70px; z-index: 0; pointer-events: none; filter: url(#liquid-distort); }
+.liquid-blob { position: absolute; border-radius: 50%; }
+.liquid-blob--a {
+  top: -20px; right: -30px; width: 300px; height: 300px;
+  background: radial-gradient(circle at 38% 32%, rgba(124, 197, 118, 0.28), rgba(124, 197, 118, 0.04) 65%, transparent 75%);
+  animation: blob-drift-a 17s ease-in-out infinite alternate;
+}
+.liquid-blob--b {
+  bottom: -30px; left: -10px; width: 260px; height: 260px;
+  background: radial-gradient(circle at 60% 60%, rgba(75, 168, 126, 0.24), rgba(75, 168, 126, 0.03) 62%, transparent 74%);
+  animation: blob-drift-b 21s ease-in-out infinite alternate;
+}
 .auth-panel {
-  position: relative; overflow: hidden; border: 1px solid rgba(205, 237, 199, 0.18) !important;
-  background: linear-gradient(145deg, rgba(42, 48, 52, 0.88), rgba(24, 29, 32, 0.91)) !important;
-  box-shadow: 0 28px 76px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(124, 197, 118, 0.035); backdrop-filter: blur(22px);
+  position: relative; z-index: 1; overflow: hidden;
+  border: 1px solid rgba(205, 237, 199, 0.18) !important;
+  background: linear-gradient(145deg, rgba(42, 48, 52, 0.82), rgba(24, 29, 32, 0.88)) !important;
+  box-shadow: 0 28px 76px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(124, 197, 118, 0.035);
+  backdrop-filter: blur(22px) saturate(1.15);
+  transform: rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transform-style: preserve-3d;
+  transition: transform 0.18s ease-out;
+  will-change: transform;
+}
+.panel-spotlight {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  opacity: var(--spot-glow, 0);
+  background: radial-gradient(340px circle at var(--spot-x, 50%) var(--spot-y, 50%), rgba(164, 233, 149, 0.09), transparent 62%);
+  transition: opacity 0.35s ease;
 }
 .auth-panel::before { position: absolute; top: -100px; right: -80px; width: 230px; height: 230px; border-radius: 50%; background: radial-gradient(circle, rgba(124, 197, 118, 0.12), transparent 70%); content: ''; pointer-events: none; }
-.panel-topline { position: absolute; top: 0; left: 10%; width: 80%; height: 1px; background: linear-gradient(90deg, transparent, rgba(171, 238, 163, 0.95), transparent); }
+.panel-topline {
+  position: absolute; top: 0; left: 10%; width: 80%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(171, 238, 163, 0.95), transparent);
+  filter: url(#liquid-edge);
+}
 .eyebrow { color: #a3e69b; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.13em; }
 .panel-title { color: #f4f8f3; font-size: clamp(1.75rem, 3.3vw, 2.1rem); font-weight: 800; letter-spacing: -0.045em; line-height: 1.05; }
 .panel-subtitle { max-width: 290px; color: rgba(225, 234, 225, 0.65); font-size: 0.86rem; line-height: 1.55; }
 .secure-seal { display: grid; flex: 0 0 auto; width: 43px; height: 43px; place-items: center; border: 1px solid rgba(146, 225, 138, 0.32); border-radius: 14px; color: #a7ed9f; background: rgba(124, 197, 118, 0.1); }
-.auth-field :deep(.v-field) { border-radius: 14px; background: rgba(7, 10, 11, 0.22); transition: background 0.22s ease, transform 0.22s ease; }
-.auth-field :deep(.v-field--focused) { background: rgba(124, 197, 118, 0.08); transform: translateY(-1px); }
+.auth-field :deep(.v-field) { border-radius: 14px; background: rgba(7, 10, 11, 0.22); transition: background 0.22s ease, transform 0.22s ease, box-shadow 0.22s ease; }
+.auth-field :deep(.v-field--focused) { background: rgba(124, 197, 118, 0.08); transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(124, 197, 118, 0.25), 0 0 22px rgba(124, 197, 118, 0.1); }
 .auth-field :deep(.v-field__prepend-inner .v-icon), .auth-field :deep(.v-field__append-inner .v-icon) { color: #a6e99d !important; }
 .field-feedback { display: inline-flex; align-items: center; gap: 4px; font-size: 0.71rem; }
 .field-feedback--success { color: #9ce493; }
 .auth-error { border: 1px solid rgba(244, 114, 114, 0.26); border-radius: 13px; }
 .auth-submit {
+  position: relative; overflow: hidden;
   min-height: 54px; border-radius: 14px !important; color: #10200f !important; font-size: 0.93rem; font-weight: 800; letter-spacing: 0.01em;
   background: linear-gradient(118deg, #72c96c 0%, #a4e995 100%) !important; box-shadow: 0 12px 28px rgba(124, 197, 118, 0.22); transition: box-shadow 0.22s ease, transform 0.22s ease;
 }
+.auth-submit::after {
+  position: absolute; top: 0; left: -80%; width: 55%; height: 100%; content: '';
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.42), transparent);
+  transform: skewX(-18deg);
+  transition: left 0.6s ease;
+  pointer-events: none;
+}
 .auth-submit:hover:not(.v-btn--disabled) { box-shadow: 0 16px 34px rgba(124, 197, 118, 0.33); transform: translateY(-2px); }
+.auth-submit:hover:not(.v-btn--disabled)::after { left: 125%; }
 .auth-submit.v-btn--disabled { color: rgba(234, 245, 233, 0.4) !important; background: rgba(255, 255, 255, 0.08) !important; box-shadow: none; }
 .auth-divider { border-color: rgba(225, 242, 224, 0.09) !important; }
 .connection-note { color: rgba(223, 234, 222, 0.55); font-size: 0.71rem; }
 .connection-pulse { width: 6px; height: 6px; flex: 0 0 auto; }
-.legal-note { color: rgba(221, 233, 221, 0.42); font-size: 0.7rem; }
 @keyframes story-enter { from { opacity: 0; transform: translateX(-26px); } to { opacity: 1; transform: translateX(0); } }
 @keyframes panel-enter { from { opacity: 0; transform: translateX(26px) scale(0.985); } to { opacity: 1; transform: translateX(0) scale(1); } }
-@keyframes float-one { to { transform: translate(60px, 45px) scale(1.12); } }
-@keyframes float-two { to { transform: translate(-50px, -35px) scale(1.1); } }
-@keyframes breathe { 50% { opacity: 0.5; transform: scale(1.25); } }
 @keyframes status-pulse { 70% { box-shadow: 0 0 0 8px rgba(146, 228, 135, 0); } 100% { box-shadow: 0 0 0 0 rgba(146, 228, 135, 0); } }
-@keyframes core-pulse { 50% { box-shadow: 0 0 0 14px rgba(124, 197, 118, 0.035), 0 0 42px rgba(124, 197, 118, 0.42); } }
-@keyframes float-card { 50% { transform: translateY(-5px); } }
-@keyframes float-card-top { 50% { transform: translateX(-50%) translateY(-5px); } }
+@keyframes ring-pulse { 0%, 100% { opacity: 0.65; transform: scale(1); } 50% { opacity: 0.15; transform: scale(1.12); } }
+@keyframes signal-travel { from { stroke-dashoffset: 666; } to { stroke-dashoffset: 0; } }
+@keyframes blob-drift-a { to { transform: translate(-45px, 40px) scale(1.14); } }
+@keyframes blob-drift-b { to { transform: translate(38px, -32px) scale(1.08); } }
 @media (max-width: 1279px) {
   .auth-container { max-width: 560px; }
   .auth-page { align-items: flex-start; }
   .auth-layout { min-height: auto; padding-top: clamp(42px, 10vh, 90px); padding-bottom: 36px; }
   .auth-panel-wrap { animation-name: story-enter; }
-  .auth-orb--one { left: -150px; }
 }
 
 @media (min-width: 1280px) {
@@ -397,8 +543,22 @@ const handleSubmit = async () => {
   .brand-symbol { width: 43px; height: 43px; border-radius: 14px; }
   .panel-title { font-size: 1.68rem; }
   .panel-subtitle { font-size: 0.8rem; }
+  .liquid-stage { inset: -40px; }
+}
+@media (max-width: 379px) {
+  .auth-container { padding: 12px !important; }
+  .auth-layout { padding-top: 24px; }
+  .auth-panel { padding: 20px !important; }
+  .liquid-blob--a { width: 210px; height: 210px; }
+  .liquid-blob--b { width: 180px; height: 180px; }
+  .secure-seal { width: 38px; height: 38px; }
+}
+@media (hover: none) {
+  .auth-panel { transform: none !important; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+  .auth-panel { transform: none !important; }
+  .panel-spotlight, .signal-path--pulse { display: none; }
 }
 </style>
