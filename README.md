@@ -3,6 +3,12 @@
 
 Plataforma web para la gestión académica de cursos, estudiantes y asistencia con IA.
 
+## Versión actual
+
+**v0.1.0 — 2026-09-30:** primera versión funcional.
+
+Consulte el historial de versiones en [CHANGELOG.md](CHANGELOG.md).
+
 ## Instalación inicial de la base de datos
 
 En SQL Server, ejecutar los archivos completos en este orden, usando SSMS:
