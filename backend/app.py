@@ -137,8 +137,7 @@ def create_app(config_name=None):
     # Enforce that a real database URI is configured.
     if not app.config.get('SQLALCHEMY_DATABASE_URI'):
         raise RuntimeError(
-            "No database configured. Set `DATABASE_URL` or the MSSQL_* environment variables: "
-            "MSSQL_USER, MSSQL_PASSWORD, MSSQL_HOST, MSSQL_PORT, MSSQL_DB, MSSQL_DRIVER."
+            "No database configured. Set DATABASE_URL to the SQL Server connection URL."
         )
 
     # Initialize extensions

@@ -30,6 +30,7 @@ from models import (
     RagIngestionJob,
 )
 from models.user import User
+from models.agenda_notificaciones import ActividadAgenda
 from models.role import Role
 from werkzeug.security import generate_password_hash
 from routes.auth_multi_tenant import coordinador_required, validate_password
@@ -394,7 +395,10 @@ def delete_curso(curso_id):
 
     try:
         nombre = curso.nombre
-        # Dependent rows without ON DELETE CASCADE must be removed explicitly first
+        actividad_ids = db.select(ActividadAgenda.id).where(ActividadAgenda.curso_id == curso.id)
+        LogNotificacion.query.filter(
+            LogNotificacion.actividad_agenda_id.in_(actividad_ids)
+        ).delete(synchronize_session=False)
         EstudianteCurso.query.filter_by(curso_id=curso.id).delete()
         RagIngestionJob.query.filter_by(curso_id=curso.id).delete()
         db.session.delete(curso)

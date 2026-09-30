@@ -4,6 +4,9 @@ Super Admin Routes: Institution & Plan Management
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from models import db, Institucion, Plan, Suscripcion, User, Role
+from models.academia import Curso, EstudianteCurso
+from models.agenda_notificaciones import ActividadAgenda, ConsumoTokens, LogNotificacion
+from models.ia_chat import MensajeChat, RagIngestionJob, SesionChat
 from routes.auth_multi_tenant import super_admin_required, validate_password
 from services.validation import (
     is_valid_email,
@@ -169,6 +172,29 @@ def delete_institucion(institucion_id):
 
     try:
         nombre = institucion.nombre
+        user_ids = db.select(User.id).where(User.institucion_id == institucion.id)
+        curso_ids = db.select(Curso.id).where(Curso.institucion_id == institucion.id)
+        sesion_ids = db.select(SesionChat.id).where(
+            db.or_(SesionChat.user_id.in_(user_ids), SesionChat.curso_id.in_(curso_ids))
+        )
+        actividad_ids = db.select(ActividadAgenda.id).where(ActividadAgenda.curso_id.in_(curso_ids))
+
+        MensajeChat.query.filter(MensajeChat.sesion_chat_id.in_(sesion_ids)).delete(synchronize_session=False)
+        SesionChat.query.filter(
+            db.or_(SesionChat.user_id.in_(user_ids), SesionChat.curso_id.in_(curso_ids))
+        ).delete(synchronize_session=False)
+        LogNotificacion.query.filter(
+            db.or_(LogNotificacion.user_id.in_(user_ids), LogNotificacion.actividad_agenda_id.in_(actividad_ids))
+        ).delete(synchronize_session=False)
+        EstudianteCurso.query.filter(
+            db.or_(EstudianteCurso.user_id.in_(user_ids), EstudianteCurso.curso_id.in_(curso_ids))
+        ).delete(synchronize_session=False)
+        ConsumoTokens.query.filter(
+            db.or_(ConsumoTokens.institucion_id == institucion.id, ConsumoTokens.user_id.in_(user_ids))
+        ).delete(synchronize_session=False)
+        RagIngestionJob.query.filter(
+            db.or_(RagIngestionJob.institucion_id == institucion.id, RagIngestionJob.curso_id.in_(curso_ids))
+        ).delete(synchronize_session=False)
         db.session.delete(institucion)
         db.session.commit()
 

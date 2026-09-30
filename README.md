@@ -3,6 +3,27 @@
 
 Plataforma web para la gestión académica de cursos, estudiantes y asistencia con IA.
 
+## Instalación inicial de la base de datos
+
+En SQL Server, ejecutar los archivos completos en este orden, usando SSMS:
+
+1. [database/001-initial-schema.sql](database/001-initial-schema.sql): crea la base `tutoria-webapp` si no existe y sus 16 tablas. Requiere una base vacía y se ejecuta una sola vez; no es una migración para bases con datos. Si el usuario SQL no puede crear bases, un administrador debe crear primero la base vacía con ese nombre.
+2. [database/001-seed-data.sql](database/001-seed-data.sql): carga roles, cuenta de administración, tarifa IA y ejemplos académicos. Puede repetirse sin duplicar los datos ni sobrescribir contraseñas o suscripciones existentes.
+
+No hay que activar SQLCMD, suministrar hashes externamente ni definir variables de entorno para **ejecutar estos scripts**. Los valores editables están al principio del seed: administración, institución, dominio, plan, cuota, tarifa y personas. Mantener el bloque completo, sin insertar separadores `GO` entre sus constantes y su uso.
+
+El seed incluye una institución, un coordinador, 12 estudiantes con nombres naturales, dos cursos, matrículas, conversaciones, agenda y consumo histórico. La suscripción inicial dura 12 meses desde la instalación. Para empezar sin ejemplos académicos, cambiar `@CargarEjemplos` a `0`: solo se cargarán roles, administración y tarifa IA. No se inventan fuentes RAG, ingestiones completadas ni notificaciones enviadas.
+
+| Cuenta inicial | Contraseña inicial pública |
+|---|---|
+| Administración: `administracion@demo.com` | `password` |
+| Coordinación: `coordinador@demo.com` | `password` |
+| Estudiante: `estudiante@demo.com` y demás estudiantes | `password` |
+
+**Cambiar estas contraseñas desde Perfil antes de exponer la aplicación.** La base almacena hashes PBKDF2-SHA256 compatibles con Werkzeug; cambiar el texto de una contraseña en un comentario no actualiza su hash. Para una instalación real, usar el modo sin ejemplos y cambiar inmediatamente la contraseña de administración; las demás cuentas se crean desde la app.
+
+Los scripts no crean el usuario de conexión de SQL Server ni pueden configurar por sí solos la aplicación: el backend sigue necesitando `DATABASE_URL` apuntando a `tutoria-webapp`, `JWT_SECRET_KEY` y los webhooks n8n para IA. Son configuración del despliegue, no requisitos extra del seed. No usar `db.create_all()` para inicializar estas tablas, porque los UUID nativos de SQL Server se representan como strings en el ORM.
+
 ## Despliegue con Docker
 
 El despliegue crea dos servicios:
@@ -119,7 +140,7 @@ Use URLs de producción de n8n (`/webhook/...`), nunca `/webhook-test/...`. Si l
 
 ### 3. Aplicar migraciones y desplegar
 
-Antes de publicar la versión, ejecute sobre SQL Server el script principal [database/script-tutoria.sql](database/script-tutoria.sql) para aplicar el esquema base y los ajustes de compatibilidad incluidos en ese archivo. Luego aplique [database/populate-tutoria.sql](database/populate-tutoria.sql) para cargar los datos iniciales.
+Para una instalación nueva, ejecute sobre SQL Server [database/001-initial-schema.sql](database/001-initial-schema.sql) y después [database/001-seed-data.sql](database/001-seed-data.sql), según la sección de instalación inicial. En producción use el modo sin ejemplos y cambie la contraseña pública de administración antes de publicar. No vuelva a ejecutar el esquema inicial sobre una base existente: los cambios futuros requieren una migración específica.
 
 Después, construya e inicie los contenedores desde `/opt/tutoria`:
 
@@ -156,7 +177,7 @@ No ejecute `docker compose down -v` durante una actualización: elimina los vol�
 
 ## Operación de la base de conocimiento RAG
 
-Antes de desplegar esta versión, asegúrese de que [database/script-tutoria.sql](database/script-tutoria.sql) haya sido ejecutado una vez, ya que incluye la tabla de trabajos de ingestión RAG y sus índices para el historial de cargas, estado, documentos recibidos y métricas devueltas por n8n.
+El esquema de instalación [database/001-initial-schema.sql](database/001-initial-schema.sql) incluye la tabla de trabajos de ingestión RAG y sus índices para el historial de cargas, estado, documentos recibidos y métricas devueltas por n8n. Las bases anteriores deben incorporar esa tabla mediante una migración, no volviendo a ejecutar la instalación completa.
 
 El detalle de cada curso muestra un resumen compacto de documentos indexados, fecha de indexación y trabajos que requieren atención. Los PDF se conservan únicamente mientras viva el contenedor backend; el historial y las métricas permanecen registrados en SQL Server.
 
