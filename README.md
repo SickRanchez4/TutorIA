@@ -9,6 +9,22 @@ Plataforma web para la gestión académica de cursos, estudiantes y asistencia c
 
 Consulte el historial de versiones en [CHANGELOG.md](CHANGELOG.md).
 
+## Especificaciones y pruebas
+
+Estado documental consolidado el **2026-10-31**. La versión de producto sigue siendo v0.1.0; los entregables posteriores no declaran reparados sus defectos ni certifican el MVP completo.
+
+| Documento | Aprobación / referencia | Construcción | Verificación |
+|---|---|---|---|
+| [Spec-000](docs/specs/spec-000-mvp/Spec-000-mvp.md) | Baseline retrospectivo cerrado de v0.1.0 | MVP existente | Describe alcance y límites; no certificación integral |
+| [SPEC-001](docs/specs/spec-001-tests/spec.md) | Spec y plan aprobados | Proyecto de pruebas implementado; evaluación cerrada con defectos | [Registro](docs/specs/spec-001-tests/test.md): 23 aislados y 53 controles; integración/sistema históricos. RF-5/RNF-6 fallidos |
+| [SPEC-002](docs/specs/spec-002-ui-ux/spec.md) | Spec aprobada; [plan y paleta aprobados el 2026-10-31](docs/specs/spec-002-ui-ux/plan.md) | C0 preparado; C1–C5 pendientes, sin implementación UI/UX | [Registro](docs/specs/spec-002-ui-ux/test.md): 28 requisitos no ejecutados; lint baseline fallido y build satisfactorio con avisos |
+
+**Aprobada** significa que el responsable aceptó el alcance o diseño, no que exista código. **Implementada** indica que existe el entregable. **Verificada** exige evidencia satisfactoria de los criterios aplicables. **Cerrada con defectos** significa que terminó la evaluación, pero siguen requisitos fallidos o pendientes; no equivale a cumplimiento íntegro.
+
+La [Constitución](docs/specs/constitution.md) gobierna los cambios posteriores al baseline. Los registros de cada spec son la fuente de resultados y defectos; las [plantillas](docs/templates/prompts.md) son ejemplos, no requisitos aprobados. Para reproducir las pruebas, seguir [testing/README.md](testing/README.md) y [testing/REGRESSION.md](testing/REGRESSION.md).
+
+Cada spec resume su evidencia en un único `evidence.md`. Los reportes y journals `ownership.json` que generan los runners son locales y quedan fuera de Git; los reportes y doce journals anteriores se retiraron el 2026-10-31 por decisión del responsable. Entornos, cachés, PDF temporales, Excel de sistema y secretos también quedan fuera de Git. La autorización histórica de SQL no habilita nuevas operaciones; integración y sistema requieren confirmación nueva del destino y limpieza de datos propios.
+
 ## Instalación inicial de la base de datos
 
 En SQL Server, ejecutar los archivos completos en este orden, usando SSMS:
@@ -18,13 +34,15 @@ En SQL Server, ejecutar los archivos completos en este orden, usando SSMS:
 
 No hay que activar SQLCMD, suministrar hashes externamente ni definir variables de entorno para **ejecutar estos scripts**. Los valores editables están al principio del seed: administración, institución, dominio, plan, cuota, tarifa y personas. Mantener el bloque completo, sin insertar separadores `GO` entre sus constantes y su uso.
 
-El seed incluye una institución, un coordinador, 12 estudiantes con nombres naturales, dos cursos, matrículas, conversaciones, agenda y consumo histórico. La suscripción inicial dura 12 meses desde la instalación. Para empezar sin ejemplos académicos, cambiar `@CargarEjemplos` a `0`: solo se cargarán roles, administración y tarifa IA. No se inventan fuentes RAG, ingestiones completadas ni notificaciones enviadas.
+Con sus valores actuales, el seed incluye Universidad C-137, dos coordinadores, 11 estudiantes, dos cursos, matrículas, conversaciones, agenda y consumo histórico. La suscripción inicial dura 12 meses desde la instalación. Para empezar sin ejemplos académicos, cambiar `@CargarEjemplos` a `0`: solo se cargarán roles, administración y tarifa IA. No se inventan fuentes RAG, ingestiones completadas ni notificaciones enviadas.
 
 | Cuenta inicial | Contraseña inicial pública |
 |---|---|
 | Administración: `administracion@demo.com` | `password` |
-| Coordinación: `coordinador@demo.com` | `password` |
-| Estudiante: `estudiante@demo.com` y demás estudiantes | `password` |
+| Coordinación: `coordinador.alfa@demo.com` y `coordinador.beta@demo.com` | `password` |
+| Estudiantes de ejemplo: `estudiante.alfa@demo.com`, `estudiante.beta@demo.com` y otras nueve cuentas | `password` |
+
+Estas cuentas corresponden a los valores actuales de `@AdminEmail`, `@Dominio` y `@Personas` del seed; si se editan, sus correos cambian. No se crean `coordinador@demo.com` ni `estudiante@demo.com` con la configuración actual. La carga idempotente no renombra ni elimina cuentas de una instalación anterior.
 
 **Cambiar estas contraseñas desde Perfil antes de exponer la aplicación.** La base almacena hashes PBKDF2-SHA256 compatibles con Werkzeug; cambiar el texto de una contraseña en un comentario no actualiza su hash. Para una instalación real, usar el modo sin ejemplos y cambiar inmediatamente la contraseña de administración; las demás cuentas se crean desde la app.
 

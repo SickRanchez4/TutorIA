@@ -15,9 +15,21 @@ backend/_venv/
 backend/.flaskenv
 backend/*.pyc
 __pycache__/
+.venv/
+_venv/
+venv/
+*.py[cod]
+
+# PDF de trabajo: datos locales, no artefactos del repositorio
+backend/storage/rag_uploads/
+
+# Reportes y journals generados por los runners; el resumen vive en evidence.md
+docs/specs/*/evidence/
+ownership.json
 
 # Archivos de configuración locales (opcional)
 *.env
+.env.*
 .env.docker
 .env.local
 .env.example

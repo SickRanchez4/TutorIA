@@ -106,10 +106,10 @@ El costo es una estimación en USD, no una factura del proveedor. El control pre
 
 Los roles comparten componentes visuales, manteniendo sus opciones y permisos:
 
-- [RoleSidebar.vue](../../frontend/src/components/RoleSidebar.vue): navegación, colapso, cierre y logout.
-- [PanelTitle.vue](../../frontend/src/components/PanelTitle.vue): encabezado bicolor «Panel» y nombre del rol.
-- [ProfileSection.vue](../../frontend/src/components/ProfileSection.vue): edición del perfil.
-- [MermaidMessage.vue](../../frontend/src/components/MermaidMessage.vue): texto y diagramas del tutor.
+- [RoleSidebar.vue](../../../frontend/src/components/RoleSidebar.vue): navegación, colapso, cierre y logout.
+- [PanelTitle.vue](../../../frontend/src/components/PanelTitle.vue): encabezado bicolor «Panel» y nombre del rol.
+- [ProfileSection.vue](../../../frontend/src/components/ProfileSection.vue): edición del perfil.
+- [MermaidMessage.vue](../../../frontend/src/components/MermaidMessage.vue): texto y diagramas del tutor.
 
 En escritorio, el sidebar es permanente y contraíble a iconos. En pantallas pequeñas es temporal, con hamburguesa, cierre y fondo desenfocado. El logout se ubica en el sidebar compartido. Los layouts se adaptan a escritorio, tablet y móvil.
 
@@ -185,9 +185,9 @@ El namespace es `inst_{institucion_id}_curso_{curso_id}`. El Compose actual no m
 
 El repositorio contiene:
 
-- [students-agent-chatbot.json](../../automation/workflows/students-agent-chatbot.json): normalización de entrada, configuración, modos y herramientas del tutor.
-- [upload-to-pinecone.json](../../automation/workflows/upload-to-pinecone.json): PDF, embeddings, indexación e integración con Google Drive.
-- [knowledge-index-admin.json](../../automation/workflows/knowledge-index-admin.json): eliminación de documentos o limpieza del conocimiento.
+- [students-agent-chatbot.json](../../../automation/workflows/students-agent-chatbot.json): normalización de entrada, configuración, modos y herramientas del tutor.
+- [upload-to-pinecone.json](../../../automation/workflows/upload-to-pinecone.json): PDF, embeddings, indexación e integración con Google Drive.
+- [knowledge-index-admin.json](../../../automation/workflows/knowledge-index-admin.json): eliminación de documentos o limpieza del conocimiento.
 
 El workflow de chat normaliza los campos actuales de institución, curso, mensaje y conversación. Las herramientas subordinadas de RAG y Mermaid están referenciadas por identificadores externos; su contenido no está incluido íntegramente en esos tres artefactos. No se puede certificar la recuperación extremo a extremo solo con estos exports.
 
@@ -217,8 +217,8 @@ Instituciones, usuarios y entidades relacionadas utilizan UUID nativos; cursos, 
 
 ### 7.1 Scripts
 
-1. [001-initial-schema.sql](../../database/001-initial-schema.sql): crea la base si el operador tiene permisos, requiere base vacía y crea tablas, restricciones e índices transaccionalmente.
-2. [001-seed-data.sql](../../database/001-seed-data.sql): carga roles, administración, tarifa y ejemplos opcionales mediante valores al comienzo del archivo.
+1. [001-initial-schema.sql](../../../database/001-initial-schema.sql): crea la base si el operador tiene permisos, requiere base vacía y crea tablas, restricciones e índices transaccionalmente.
+2. [001-seed-data.sql](../../../database/001-seed-data.sql): carga roles, administración, tarifa y ejemplos opcionales mediante valores al comienzo del archivo.
 
 Los scripts seleccionan `tutoria-webapp`. En hosting con nombre impuesto, el destino debe corresponder a la base autorizada y a `DATABASE_URL`; ese nombre literal no describe necesariamente una instalación existente.
 
@@ -245,11 +245,11 @@ Estos scripts son de instalación, no migraciones para bases con datos.
 
 Las credenciales de proveedores se configuran en sus servicios. SQL no crea el usuario de conexión ni configura secretos de la aplicación.
 
-[docker-compose.yml](../../docker-compose.yml) define backend y frontend. SQL Server y n8n son externos, no provisionados por Compose. [docker-compose.production.yml](../../docker-compose.production.yml) añade Caddy, HTTP/HTTPS y volúmenes de certificados.
+[docker-compose.yml](../../../docker-compose.yml) define backend y frontend. SQL Server y n8n son externos, no provisionados por Compose. [docker-compose.production.yml](../../../docker-compose.production.yml) añade Caddy, HTTP/HTTPS y volúmenes de certificados.
 
 Caddy entrega tráfico a Nginx; Nginx sirve la SPA y reenvía `/api` a Gunicorn. La API dispone de `/healthz` para disponibilidad del proceso y `/readyz` para SQL Server; el proxy los expone como `/api/healthz` y `/api/readyz`.
 
-El backend emite logs JSON y `X-Request-ID`. La guía operativa está en [README.md](../../README.md). Credenciales públicas del seed y secretos de ejemplo no son adecuados para exposición a usuarios reales.
+El backend emite logs JSON y `X-Request-ID`. La guía operativa está en [README.md](../../../README.md). Credenciales públicas del seed y secretos de ejemplo no son adecuados para exposición a usuarios reales.
 
 ## 9. Límites de v0.1.0
 
@@ -278,15 +278,15 @@ Son límites del MVP, no nuevas funcionalidades ni un plan de ejecución.
 
 ## 10. Referencias y continuidad
 
-- [Aplicación backend](../../backend/app.py)
-- [Configuración](../../backend/config.py)
-- [Identidad y autorización](../../backend/routes/auth_multi_tenant.py)
-- [Administración](../../backend/routes/instituciones.py)
-- [Coordinación](../../backend/routes/coordinador.py)
-- [Estudiante](../../backend/routes/estudiante.py)
-- [Ingestión RAG](../../backend/services/rag_ingestion.py)
-- [Cuotas](../../backend/services/subscription_quota.py)
-- [Dependencias frontend](../../frontend/package.json)
-- [Instalación y operación](../../README.md)
+- [Aplicación backend](../../../backend/app.py)
+- [Configuración](../../../backend/config.py)
+- [Identidad y autorización](../../../backend/routes/auth_multi_tenant.py)
+- [Administración](../../../backend/routes/instituciones.py)
+- [Coordinación](../../../backend/routes/coordinador.py)
+- [Estudiante](../../../backend/routes/estudiante.py)
+- [Ingestión RAG](../../../backend/services/rag_ingestion.py)
+- [Cuotas](../../../backend/services/subscription_quota.py)
+- [Dependencias frontend](../../../frontend/package.json)
+- [Instalación y operación](../../../README.md)
 
 Spec-000 registra el estado consolidado de **v0.1.0**. Las especificaciones posteriores parten de este baseline y distinguen comportamiento existente y nuevo. No se reconstruye la historia incremental como historias de usuario, planes o tareas escritos a posteriori.

@@ -5,7 +5,7 @@ import { createVuetify } from 'vuetify'
 const tutoria = {
   dark: true,
   colors: {
-    background: '#17181c',
+    background: '#121518',
     surface: '#1e1f25',
     'surface-bright': '#26272e',
     'surface-variant': '#2f3038',
@@ -104,6 +104,10 @@ export default createVuetify({
     },
     VTabs: {
       color: 'primary',
+    },
+    // Lists inherit the card/drawer surface instead of painting their own slab.
+    VList: {
+      bgColor: 'transparent',
     },
     VDataTable: {
       hover: true,

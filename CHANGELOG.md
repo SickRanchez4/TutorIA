@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+- Constitución, especificaciones y plantillas SDD consolidadas como documentación posterior al baseline de v0.1.0.
+- Proyecto independiente de pruebas de SPEC-001, con procedimientos y evidencia histórica preservada; evaluación cerrada con RF-5/RNF-6 fallidos, no certificación del MVP.
+- Entregables de preparación C0 de SPEC-002: inventario, casos, recursos y baseline lint/build; sin implementación UI/UX ni requisitos funcionales aprobados por ejecución.
+
+### Changed
+- Corrección editorial de los enlaces de Spec-000 tras su traslado y de las cuentas/cantidades del seed descritas en README, sin modificar SQL ni el producto.
+- Aprobación explícita del plan y paleta de SPEC-002 registrada el 2026-10-31; T01 respaldada y discrepancia C0-G01 resuelta sin retrodatación ni autorización para implementar C1–C5 en esta limpieza.
+
 ## [0.1.0] - 2026-09-30
 
 ### Added
