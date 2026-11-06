@@ -1,0 +1,1 @@
+"""SPEC-001 essential isolated tests; SQL integration remains pending."""

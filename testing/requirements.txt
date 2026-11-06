@@ -1,0 +1,2 @@
+# Reuse application dependencies without changing the backend environment.
+-r ../backend/requirements.txt
