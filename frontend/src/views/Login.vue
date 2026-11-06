@@ -1,5 +1,6 @@
 <template>
   <v-app class="auth-app">
+    <AppBackdrop />
     <v-main class="auth-main">
       <section class="auth-page" aria-labelledby="login-title">
         <!-- Filtros SVG: distorsión líquida (feTurbulence + feDisplacementMap) -->
@@ -32,8 +33,6 @@
 
         <!-- Red sináptica viva (canvas, reacciona al cursor) -->
         <SynapseBackdrop />
-        <div class="auth-noise"></div>
-        <div class="auth-vignette"></div>
 
         <v-container class="auth-container pa-4 pa-sm-6 pa-lg-8" fluid>
           <v-row class="auth-layout align-center" no-gutters>
@@ -221,6 +220,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import AppBackdrop from '../components/AppBackdrop.vue'
 import SynapseBackdrop from '../components/SynapseBackdrop.vue'
 
 const router = useRouter()
@@ -287,12 +287,7 @@ const handleSubmit = async () => {
     password: form.value.password
   })
 
-  if (result.success) {
-    if (result.user.role === 'super_admin') router.push('/super-admin')
-    else if (result.user.role === 'coordinador') router.push('/coordinador')
-    else if (result.user.role === 'estudiante') router.push('/estudiante')
-    else router.push('/login')
-  }
+  if (result.success) router.push(authStore.dashboardRoute)
 }
 
 /* ============================================================
@@ -353,7 +348,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.auth-app { background: #101216; }
+.auth-app { background: transparent !important; }
+.auth-main { position: relative; z-index: 1; }
 .auth-main, .auth-page { min-height: 100vh; }
 .auth-page {
   position: relative;
@@ -362,19 +358,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   padding-block: 24px;
-  background: radial-gradient(100% 90% at 0% 0%, rgba(124, 197, 118, 0.12), transparent 55%), radial-gradient(70% 110% at 100% 100%, rgba(69, 148, 113, 0.13), transparent 58%), linear-gradient(127deg, #111419 0%, #171b20 52%, #121518 100%);
 }
 .svg-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 .auth-container { position: relative; z-index: 2; max-width: 1500px; }
 .auth-layout { min-height: auto; }
-.auth-noise, .auth-vignette { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
-.auth-noise {
-  opacity: 0.24;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
-}
-.auth-vignette {
-  background: radial-gradient(120% 95% at 50% 42%, transparent 42%, rgba(9, 11, 13, 0.55) 100%);
-}
 .auth-story { animation: story-enter 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .brand-row, .mobile-brand { gap: 12px; }
 .brand-symbol {
@@ -512,14 +499,14 @@ onBeforeUnmount(() => {
 @keyframes signal-travel { from { stroke-dashoffset: 666; } to { stroke-dashoffset: 0; } }
 @keyframes blob-drift-a { to { transform: translate(-45px, 40px) scale(1.14); } }
 @keyframes blob-drift-b { to { transform: translate(38px, -32px) scale(1.08); } }
-@media (max-width: 1279px) {
+@media (max-width: 1144px) {
   .auth-container { max-width: 560px; }
   .auth-page { align-items: flex-start; }
   .auth-layout { min-height: auto; padding-top: clamp(42px, 10vh, 90px); padding-bottom: 36px; }
   .auth-panel-wrap { animation-name: story-enter; }
 }
 
-@media (min-width: 1280px) {
+@media (min-width: 1145px) {
   .auth-page {
     align-items: flex-start;
     padding-block: 16px;
@@ -557,7 +544,6 @@ onBeforeUnmount(() => {
   .auth-panel { transform: none !important; }
 }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
   .auth-panel { transform: none !important; }
   .panel-spotlight, .signal-path--pulse { display: none; }
 }

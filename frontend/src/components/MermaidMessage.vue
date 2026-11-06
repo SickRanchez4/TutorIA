@@ -2,18 +2,23 @@
   <div class="mermaid-message">
     <template v-for="(part, index) in parts" :key="index">
       <p v-if="part.type === 'text'" class="mermaid-message__text">{{ part.value }}</p>
-      <div v-else class="mermaid-message__diagram" :aria-label="diagramLabel(part.value)">
+      <div v-else class="mermaid-message__diagram" role="figure" :aria-label="DIAGRAM_LABEL">
         <div class="mermaid-message__preview">
           <button
+            v-if="renderedSvgs[index]"
             type="button"
             class="mermaid-message__expand-button"
-            :aria-label="`Ampliar ${diagramLabel(part.value).toLowerCase()}`"
+            :aria-label="`Ampliar ${DIAGRAM_LABEL.toLowerCase()}`"
             title="Ampliar diagrama"
             @click="expandDiagram(index)"
           >
             <v-icon icon="mdi-magnify-plus-outline" size="20"></v-icon>
           </button>
-          <div v-if="!renderedSvgs[index]" class="mermaid-message__loading">
+          <div v-if="renderErrors[index]" class="mermaid-message__error" role="alert">
+            <p class="mb-2">No se pudo dibujar este diagrama. Se muestra su definición:</p>
+            <pre>{{ part.value }}</pre>
+          </div>
+          <div v-else-if="!renderedSvgs[index]" class="mermaid-message__loading">
             <v-progress-circular indeterminate color="primary" size="24" width="3"></v-progress-circular>
             Generando diagrama...
           </div>
@@ -57,9 +62,11 @@ const props = defineProps({
 })
 
 const renderedSvgs = ref({})
+const renderErrors = ref({})
 const expanded = ref(false)
 const expandedSvg = ref('')
 let renderSequence = 0
+const DIAGRAM_LABEL = 'Diagrama generado para el recurso de estudio'
 
 const parts = computed(() => {
   const result = []
@@ -78,8 +85,6 @@ const parts = computed(() => {
   if (trailingText) result.push({ type: 'text', value: trailingText })
   return result.length ? result : [{ type: 'text', value: props.content }]
 })
-
-const diagramLabel = () => 'Diagrama generado para el recurso de estudio'
 
 function prepareSvg(svg) {
   // Mermaid genera SVG sin fondo. Se fija aquí para aislar cada gráfico de los
@@ -107,6 +112,10 @@ async function ensureMermaid() {
       theme: 'base',
       securityLevel: 'strict',
       suppressErrorRendering: true,
+      // HTML labels live in <foreignObject>, which the SVG sanitizer removes;
+      // plain SVG text keeps labels visible after sanitizing.
+      htmlLabels: false,
+      flowchart: { htmlLabels: false },
       themeVariables: {
         background: '#ffffff',
         primaryColor: '#e8f0ff',
@@ -140,18 +149,32 @@ async function ensureMermaid() {
 async function renderDiagrams() {
   const sequence = ++renderSequence
   renderedSvgs.value = {}
+  renderErrors.value = {}
 
   if (!parts.value.some((part) => part.type === 'diagram')) return
 
-  await ensureMermaid()
+  try {
+    await ensureMermaid()
+  } catch (error) {
+    console.error('No se pudo cargar Mermaid.', error)
+    renderErrors.value = Object.fromEntries(parts.value.map((part, index) => [index, part.type === 'diagram']))
+    return
+  }
 
   for (const [index, part] of parts.value.entries()) {
     if (part.type !== 'diagram') continue
 
     const renderId = `tutoria-mermaid-${Date.now()}-${++nextDiagramId}-${index}`
-    const { svg } = await mermaid.render(renderId, part.value)
-    if (sequence === renderSequence) {
-      renderedSvgs.value = { ...renderedSvgs.value, [index]: prepareSvg(svg) }
+    try {
+      const { svg } = await mermaid.render(renderId, part.value)
+      if (sequence === renderSequence) {
+        renderedSvgs.value = { ...renderedSvgs.value, [index]: prepareSvg(svg) }
+      }
+    } catch (error) {
+      console.error('No se pudo renderizar el diagrama Mermaid.', error)
+      if (sequence === renderSequence) {
+        renderErrors.value = { ...renderErrors.value, [index]: true }
+      }
     }
   }
 }
@@ -301,8 +324,20 @@ onUnmounted(() => { renderSequence += 1 })
 }
 
 .mermaid-message__error {
-  color: rgb(var(--v-theme-error));
+  color: #8a1c1c;
   font-size: 0.8125rem;
+}
+
+.mermaid-message__error pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 8px;
+  color: #172033;
+  background: #f4f6f9;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 599px) {

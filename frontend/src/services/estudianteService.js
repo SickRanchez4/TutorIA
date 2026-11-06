@@ -48,17 +48,6 @@ export const estudianteService = {
     if (cursoId) params.curso_id = cursoId
     return api.get('/estudiante/agenda', { params })
   },
-
-  // Perfil del usuario actual
-  getProfile() {
-    return api.get('/auth/profile')
-  },
-  updateProfile(payload) {
-    return api.patch('/auth/profile', payload)
-  },
-  updatePassword(payload) {
-    return api.patch('/auth/profile/password', payload)
-  }
 }
 
 export default estudianteService

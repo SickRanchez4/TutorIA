@@ -1,32 +1,37 @@
-import { ref } from 'vue'
+import { reactive } from 'vue'
 
 const DEFAULT_DURATION = 3500
 
+export function errorMessage(error, fallback) {
+  // Axios' own messages ("Network Error", "timeout of …") are English and technical.
+  return error?.response?.data?.message || (error?.isAxiosError ? '' : error?.message) || fallback
+}
+
 /**
- * Creates isolated toast state for a view, or shared state when the same
- * instance is consumed by a parent layout and its child views.
+ * Toast state rendered by RoleLayout. Each dashboard owns one instance; the
+ * coordinator views share the instance of their persistent layout.
  */
 export function createToast() {
-  const message = ref('')
-  const isError = ref(false)
+  const state = reactive({ message: '', isError: false })
   let hideTimer
 
-  function notify(text, error = false) {
-    message.value = text
-    isError.value = error
+  function clear() {
     clearTimeout(hideTimer)
-    hideTimer = setTimeout(() => {
-      message.value = ''
-    }, DEFAULT_DURATION)
+    state.message = ''
+  }
+
+  function notify(text, isError = false) {
+    clearTimeout(hideTimer)
+    state.message = text
+    state.isError = isError
+    hideTimer = setTimeout(clear, DEFAULT_DURATION)
   }
 
   function notifyError(error, fallback) {
-    notify(error?.response?.data?.message || error?.message || fallback, true)
+    notify(errorMessage(error, fallback), true)
   }
 
-  return { message, isError, notify, notifyError }
+  return { state, notify, notifyError, clear }
 }
 
-// Coordinador has one persistent layout, so its nested views intentionally
-// share a single toast instance rendered by that layout.
 export const coordinadorToast = createToast()

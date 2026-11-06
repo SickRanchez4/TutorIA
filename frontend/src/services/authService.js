@@ -1,5 +1,5 @@
 /**
- * Authentication Service
+ * Authentication and current-user profile endpoints under /api/auth
  */
 import api from './api'
 
@@ -12,19 +12,13 @@ export const authService = {
     }
   },
 
-  async register(userData) {
-    try {
-      return await api.post('/auth/register', userData)
-    } catch (error) {
-      throw error.response?.data || { message: 'Error de conexión' }
-    }
+  getProfile() {
+    return api.get('/auth/profile')
   },
-
-  async getProfile() {
-    try {
-      return await api.get('/auth/profile')
-    } catch (error) {
-      throw error.response?.data || { message: 'Error de conexión' }
-    }
-  }
+  updateProfile(payload) {
+    return api.patch('/auth/profile', payload)
+  },
+  updatePassword(payload) {
+    return api.patch('/auth/profile/password', payload)
+  },
 }

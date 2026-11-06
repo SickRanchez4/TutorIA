@@ -128,17 +128,6 @@ export const coordinadorService = {
     
     return api.get('/coordinador/analiticas/consumo', { params })
   },
-
-  // Perfil del usuario actual
-  getProfile() {
-    return api.get('/auth/profile')
-  },
-  updateProfile(payload) {
-    return api.patch('/auth/profile', payload)
-  },
-  updatePassword(payload) {
-    return api.patch('/auth/profile/password', payload)
-  }
 }
 
 export default coordinadorService

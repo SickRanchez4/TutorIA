@@ -44,7 +44,7 @@
         v-for="item in items"
         :key="item.value || item.to"
         :to="item.to"
-        :active="item.to ? undefined : active === item.value"
+        :active="isActive(item)"
         :prepend-icon="item.icon"
         :title="compact ? undefined : item.label"
         rounded="lg"
@@ -57,7 +57,7 @@
     <template #append>
       <v-divider></v-divider>
       <div class="pa-3">
-        <p v-if="!compact && userName" class="role-sidebar__user text-caption text-medium-emphasis mb-3">{{ userName }}</p>
+        <p v-if="!compact && userName" class="role-sidebar__user text-body-small text-medium-emphasis mb-3">{{ userName }}</p>
         <v-btn
           :block="!compact"
           :icon="compact"
@@ -78,6 +78,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import PanelTitle from './PanelTitle.vue'
 
@@ -92,9 +93,13 @@ const props = defineProps({
 const open = defineModel({ type: Boolean, default: false })
 const emit = defineEmits(['select', 'logout'])
 const { mdAndUp } = useDisplay()
+const route = useRoute()
 const rail = ref(false)
 const temporary = computed(() => !props.permanentOnDesktop || !mdAndUp.value)
 const compact = computed(() => !temporary.value && rail.value)
+
+// Route items stay highlighted on nested pages (e.g. a course detail under "Cursos").
+const isActive = (item) => (item.to ? route.path.startsWith(item.to) : props.active === item.value)
 
 watch(mdAndUp, (isDesktop) => {
   open.value = isDesktop && props.permanentOnDesktop
@@ -114,8 +119,9 @@ function selectItem(item) {
 
 <style scoped>
 .role-sidebar {
-  border-right: 1px solid rgba(124, 197, 118, 0.2) !important;
-  background: linear-gradient(180deg, rgba(36, 37, 43, 0.98), rgba(45, 47, 55, 0.98)) !important;
+  border-right: 1px solid rgba(var(--tutoria-green-rgb), 0.2) !important;
+  background: linear-gradient(180deg, rgba(28, 33, 37, 0.97), rgba(22, 26, 30, 0.97)) !important;
+  backdrop-filter: blur(14px);
 }
 .role-sidebar--mobile { z-index: 1100 !important; }
 .role-sidebar-backdrop {
