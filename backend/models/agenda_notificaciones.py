@@ -11,10 +11,10 @@ class ActividadAgenda(db.Model):
     """Academic deadlines and events"""
     __tablename__ = 'actividades_agenda'
     
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.Uuid(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     curso_id = db.Column(db.Integer, db.ForeignKey('cursos.id', ondelete='CASCADE'), nullable=False)
     titulo = db.Column(db.String(255), nullable=False)
-    descripcion = db.Column(db.String(1000), nullable=True)
+    descripcion = db.Column(db.Text, nullable=True)
     tipo = db.Column(db.String(50), nullable=False)  # examen, tarea, proyecto
     fecha_limite = db.Column(db.DateTime, nullable=False)
     estado = db.Column(db.String(50), default='vigente')  # vigente, completada, cancelada
@@ -40,9 +40,9 @@ class LogNotificacion(db.Model):
     """Notification delivery audit log"""
     __tablename__ = 'log_notificaciones'
     
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = db.Column(db.String(36), db.ForeignKey('users.id', ondelete='NO ACTION'), nullable=False)
-    actividad_agenda_id = db.Column(db.String(36), db.ForeignKey('actividades_agenda.id', ondelete='NO ACTION'), nullable=False)
+    id = db.Column(db.Uuid(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(db.Uuid(as_uuid=False), db.ForeignKey('users.id', ondelete='NO ACTION'), nullable=False)
+    actividad_agenda_id = db.Column(db.Uuid(as_uuid=False), db.ForeignKey('actividades_agenda.id', ondelete='NO ACTION'), nullable=False)
     tipo_notificacion = db.Column(db.String(50), nullable=False)  # recordatorio_7_dias, alerta_24_horas
     estado_envio = db.Column(db.String(50), nullable=False)  # enviado, fallido
     fecha_ejecucion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
@@ -79,10 +79,10 @@ class ConsumoTokens(db.Model):
     """Token consumption audit trail + cost tracking"""
     __tablename__ = 'consumo_tokens'
     
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    institucion_id = db.Column(db.String(36), db.ForeignKey('instituciones.id', ondelete='CASCADE'), nullable=False)
+    id = db.Column(db.Uuid(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    institucion_id = db.Column(db.Uuid(as_uuid=False), db.ForeignKey('instituciones.id', ondelete='CASCADE'), nullable=False)
     curso_id = db.Column(db.Integer, db.ForeignKey('cursos.id', ondelete='SET NULL'), nullable=True)
-    user_id = db.Column(db.String(36), db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(db.Uuid(as_uuid=False), db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     tipo_operacion = db.Column(db.String(50), nullable=False)  # chat_rag, resumen_sintetico, practicar
     prompt_tokens = db.Column(db.Integer, nullable=False)
     completion_tokens = db.Column(db.Integer, nullable=False)

@@ -135,7 +135,7 @@ def read_candidates(local, journal):
         if verify_destination(connection, local.database) != local.label:
             raise SafetyError('Destino cambiado; verificación bloqueada.')
         metadata = MetaData()
-        tables = {('dbo', entity): Table(entity, metadata, schema='dbo',
+        tables = {('public', entity): Table(entity, metadata, schema='public',
                                          autoload_with=connection, resolve_fks=False) for entity in ENTITIES}
         string_uuid_columns(tables)
         return resolve_owned(connection, tables, journal)

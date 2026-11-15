@@ -35,9 +35,10 @@ class FixtureBuilder:
             # Revalidate the active connection before each write, not just the initial probe.
             if verify_destination(session.connection(), self.local.database) != self.local.label:
                 raise SafetyError('Destino cambiado; preparación bloqueada.')
-            session.execute(text(
-                f'SELECT TOP (1) 1 FROM dbo.[{entity}] WITH (TABLOCKX, HOLDLOCK)'
-            ))
+            if entity not in {'instituciones', 'planes', 'suscripciones', 'users',
+                              'cursos', 'estudiante_cursos', 'sesiones_chat', 'configuracion_ia'}:
+                raise SafetyError('Entidad de preparación no permitida.')
+            session.execute(text(f'LOCK TABLE public."{entity}" IN ACCESS EXCLUSIVE MODE'))
             if model.query.filter_by(**marker).first() is not None:
                 raise SafetyError('Marca ficticia ya utilizada; no se modifica el recurso existente.')
             if values.get('id') is not None and session.get(model, values['id']) is not None:

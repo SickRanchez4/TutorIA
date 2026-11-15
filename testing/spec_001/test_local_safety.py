@@ -14,9 +14,7 @@ import warnings
 from openpyxl import load_workbook
 
 from sqlalchemy import Column, Integer, MetaData, String, Table
-from sqlalchemy.dialects.mssql import dialect
-from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER
-from sqlalchemy.dialects.mssql.pyodbc import MSDialect_pyodbc
+from sqlalchemy.dialects.postgresql import dialect, UUID
 from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
 from sqlalchemy.sql.selectable import Select
 from sqlalchemy.sql.dml import Delete
@@ -44,7 +42,7 @@ class Result:
 
 
 class ControlledSQL:
-    """Evaluate only Core equality selects/deletes, not a SQL Server substitute."""
+    """Evaluate only Core equality selects/deletes, not a PostgreSQL substitute."""
     def __init__(self, rows, foreign_keys):
         self.dialect = dialect()
         self.rows = copy.deepcopy(rows)
@@ -91,9 +89,9 @@ class ControlledSQL:
             self.deletes.append(table.name)
             self.rows[key] = [row for row in self.rows.get(key, []) if row not in matches]
             return Result(rowcount=len(matches))
-        if 'sys.foreign_keys' in str(statement):
+        if 'FROM pg_constraint fk' in str(statement):
             return Result(self.foreign_keys)
-        if 'TABLOCKX' in str(statement):
+        if 'LOCK TABLE' in str(statement):
             return Result()
         raise AssertionError('Unexpected controlled SQL')
 
@@ -107,26 +105,26 @@ class SafetyTests(unittest.TestCase):
         self.journal = ownership.OwnershipJournal.create('machine / test-db', 'a' * 40)
 
     def test_T10_accept_only_verified_local_url_forms(self):
-        for value in ('mssql+pyodbc://localhost/test-db?driver=ODBC+Driver+18+for+SQL+Server',
-                      'mssql+pyodbc://machine/test-db',
-                      'mssql+pyodbc://[::1]/test-db',
-                      'mssql+pyodbc:///?odbc_connect=DRIVER%3DX%3BSERVER%3Dmachine%5CLOCAL%3BDATABASE%3Dtest-db%3BTrusted_Connection%3Dyes'):
+        for value in ('postgresql+psycopg://localhost/test-db?sslmode=prefer',
+                      'postgresql+psycopg://machine/test-db',
+                      'postgresql+psycopg://[::1]/test-db',
+                      'postgresql+psycopg://127.0.0.1:5432/test-db'):
             with self.subTest(form=value.split('?')[0]):
                 self.assertEqual(local_destination.connection_target(value)[1], 'test-db')
 
     def test_T10_reject_remote_ambiguous_or_redirected_connections(self):
-        values = ('sqlite:///local.db', 'mssql+pyodbc://remote/test-db',
-                  'mssql+pyodbc://localhost/test-db?Failover_Partner=remote',
-                  'mssql+pyodbc:///?odbc_connect=SERVER%3Dlocalhost%3BSERVER%3Dremote%3BDATABASE%3Dtest-db',
-                  'mssql+pyodbc:///?odbc_connect=SERVER%3Dlocalhost%3BDATABASE%3Dtest-db%3BFailover_Partner%3Dremote',
-                  'mssql+pyodbc:///?odbc_connect=SERVER%3Dlocalhost%2C123%2Cremote%3BDATABASE%3Dtest-db')
+        values = ('sqlite:///local.db', 'postgresql+psycopg://remote/test-db',
+                  'postgresql+psycopg://localhost/test-db?hostaddr=192.0.2.1',
+                  'postgresql+psycopg://localhost/test-db?service=remote',
+                  'postgresql+psycopg://localhost/test-db?host=remote',
+                  'postgresql+psycopg://localhost,remote/test-db')
         for value in values:
             with self.subTest(form=value.split('?')[0]), self.assertRaises(SafetyError):
                 local_destination.connection_target(value)
 
     def test_T10_environment_conflict_prevents_connection(self):
-        with patch.dict('os.environ', {'DATABASE_URL': 'other'}, clear=True), \
-                patch.object(local_destination.dotenv, 'dotenv_values', return_value={'DATABASE_URL': 'local'}), \
+        with patch.dict('os.environ', {'DB_HOST': 'other'}, clear=True), \
+                patch.object(local_destination.dotenv, 'dotenv_values', return_value={'DB_HOST': 'localhost'}), \
                 patch.object(local_destination, 'create_engine') as engine:
             with self.assertRaises(SafetyError):
                 with local_destination.authorized_local_backend():
@@ -134,11 +132,12 @@ class SafetyTests(unittest.TestCase):
             engine.assert_not_called()
 
     def test_T10_existing_environment_precedes_factory_configuration(self):
-        values = {'DATABASE_URL': 'mssql+pyodbc://localhost/test-db', 'JWT_SECRET_KEY': 'synthetic-only'}
+        values = {'DB_HOST': 'localhost', 'DB_NAME': 'test-db', 'DB_USER': 'synthetic',
+                  'DB_PASSWORD': 'synthetic-only', 'JWT_SECRET_KEY': 'synthetic-only'}
         with patch.dict('os.environ', {}, clear=True), \
                 patch.object(local_destination.dotenv, 'dotenv_values', return_value=values):
             result = local_destination.read_existing_environment()
-        self.assertEqual(result['DATABASE_URL'], values['DATABASE_URL'])
+        self.assertEqual(result['DB_HOST'], values['DB_HOST'])
         self.assertEqual(result['RATELIMIT_STORAGE_URI'], 'memory://')
 
     def test_T10_refusal_prevents_factory_import(self):
@@ -146,8 +145,10 @@ class SafetyTests(unittest.TestCase):
         probe.connect.return_value.__enter__ = Mock(return_value=Mock())
         probe.connect.return_value.__exit__ = Mock(return_value=False)
         with patch.object(local_destination, 'read_existing_environment', return_value={
-                'DATABASE_URL': 'mssql+pyodbc://localhost/test-db'}), \
+                'DB_HOST': 'localhost', 'DB_NAME': 'test-db', 'DB_USER': 'synthetic',
+                'DB_PASSWORD': 'synthetic-only'}), \
                 patch.object(local_destination, 'create_engine', return_value=probe), \
+                patch.object(local_destination, 'configure_database_engine'), \
                 patch.object(local_destination, 'verify_destination', return_value='machine / test-db'), \
                 patch.object(local_destination.importlib, 'import_module') as factory:
             with self.assertRaises(SafetyError):
@@ -163,7 +164,8 @@ class SafetyTests(unittest.TestCase):
         local_destination.confirm_destination('machine / test-db', lambda _: 'AUTORIZO machine / test-db')
 
     def schema_probe(self, **overrides):
-        row = dict(machine='machine', server='machine', database_name='test-db', metadata_access=1)
+        row = dict(server='127.0.0.1', port=5432, database_name='test-db',
+                   metadata_access=True, schema_name='public', version=180000)
         row.update(overrides)
         connection, inspector = Mock(), Mock()
         identity = Mock()
@@ -180,17 +182,17 @@ class SafetyTests(unittest.TestCase):
                                  else ['curso_id'] if table == 'configuracion_ia' else ['id']))
         inspector.get_foreign_keys.side_effect = lambda table, **_: [dict(
             constrained_columns=[source], referred_columns=[target], referred_table=parent,
-            referred_schema='dbo') for source, parent, target in local_destination.REQUIRED_FKS.get(table, ())]
+            referred_schema='public') for source, parent, target in local_destination.REQUIRED_FKS.get(table, ())]
         return connection, inspector, triggers, roles
 
     def test_T10_read_only_identity_schema_and_roles(self):
         connection, inspector, _, _ = self.schema_probe()
         with patch.object(local_destination, 'inspect', return_value=inspector):
-            self.assertEqual(local_destination.verify_destination(connection, 'test-db'), 'machine / test-db')
+            self.assertEqual(local_destination.verify_destination(connection, 'test-db'), '127.0.0.1:5432 / test-db')
         self.assertTrue(all(str(call.args[0]).lstrip().startswith('SELECT') for call in connection.execute.call_args_list))
 
     def test_T10_wrong_identity_database_or_metadata_blocks(self):
-        for override in ({'machine': 'remote'}, {'database_name': 'other'}, {'metadata_access': 0}):
+        for override in ({'server': '192.0.2.1'}, {'database_name': 'other'}, {'metadata_access': False}):
             connection, inspector, _, _ = self.schema_probe(**override)
             with patch.object(local_destination, 'inspect', return_value=inspector), self.assertRaises(SafetyError):
                 local_destination.verify_destination(connection, 'test-db')
@@ -273,15 +275,15 @@ class SafetyTests(unittest.TestCase):
                 marker = dict(marker, id=identifier)
             item = self.journal.reserve(entity, marker, identifier)
             self.journal.committed(item, identifier)
-            rows[('dbo', entity)] = [dict(marker, id=identifier)]
-        rows[('dbo', 'user_roles')] = [{'user_id': user_id, 'role_id': 2}]
+            rows[('public', entity)] = [dict(marker, id=identifier)]
+        rows[('public', 'user_roles')] = [{'user_id': user_id, 'role_id': 2}]
         self.journal.state('ready')
         foreign_keys = []
         for entity, references in local_destination.REQUIRED_FKS.items():
             for source, parent, target in references:
                 foreign_keys.append(dict(constraint_id=len(foreign_keys), is_disabled=False, is_not_trusted=False,
-                                         child_schema='dbo', child_table=entity, child_column=source,
-                                         parent_schema='dbo', parent_table=parent, parent_column=target))
+                                         child_schema='public', child_table=entity, child_column=source,
+                                         parent_schema='public', parent_table=parent, parent_column=target))
         return rows, foreign_keys
 
     @contextmanager
@@ -289,7 +291,7 @@ class SafetyTests(unittest.TestCase):
         connection = ControlledSQL(rows, foreign_keys)
         metadata = MetaData()
         tables = {}
-        keys = {('dbo', entity) for entity in (*ownership.ENTITIES, 'user_roles')} | set(rows)
+        keys = {('public', entity) for entity in (*ownership.ENTITIES, 'user_roles')} | set(rows)
         for schema, name in keys:
             fields = set().union(*(row.keys() for row in rows.get((schema, name), [])))
             fields |= ({'user_id', 'role_id'} if name == 'user_roles' else {ownership.identity_column(name)})
@@ -319,7 +321,7 @@ class SafetyTests(unittest.TestCase):
         marker = {'nombre': self.journal.name('finite')}
         self.journal.reserve('planes', marker)
         # A crash before recording a parent's ID cannot have already created its children.
-        rows, foreign_keys = {('dbo', 'planes'): [dict(marker, id=10)]}, []
+        rows, foreign_keys = {('public', 'planes'): [dict(marker, id=10)]}, []
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection):
             cleanup.cleanup_owned(local, ownership.OwnershipJournal.load(self.journal.path))
             self.assertFalse(any(connection.rows.values()))
@@ -331,15 +333,15 @@ class SafetyTests(unittest.TestCase):
         self.journal.save()
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection):
             cleanup.cleanup_owned(local, ownership.OwnershipJournal.load(self.journal.path))
-            self.assertFalse(connection.rows[('dbo', 'sesiones_chat')])
+            self.assertFalse(connection.rows[('public', 'sesiones_chat')])
 
     def test_T13_unexpected_cascade_dependent_blocks_all_deletes(self):
         rows, foreign_keys = self.data_world()
-        session_id = rows[('dbo', 'sesiones_chat')][0]['id']
-        rows[('dbo', 'mensajes_chat')] = [{'id': str(uuid.uuid4()), 'sesion_chat_id': session_id}]
+        session_id = rows[('public', 'sesiones_chat')][0]['id']
+        rows[('public', 'mensajes_chat')] = [{'id': str(uuid.uuid4()), 'sesion_chat_id': session_id}]
         foreign_keys.append(dict(constraint_id=100, is_disabled=False, is_not_trusted=False,
-                                 child_schema='dbo', child_table='mensajes_chat', child_column='sesion_chat_id',
-                                 parent_schema='dbo', parent_table='sesiones_chat', parent_column='id'))
+                                 child_schema='public', child_table='mensajes_chat', child_column='sesion_chat_id',
+                                 parent_schema='public', parent_table='sesiones_chat', parent_column='id'))
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection), self.assertRaises(SafetyError):
             cleanup.cleanup_owned(local, self.journal)
         self.assertEqual(connection.deletes, [])
@@ -348,11 +350,11 @@ class SafetyTests(unittest.TestCase):
 
     def test_T13_unowned_cross_schema_child_blocks(self):
         rows, foreign_keys = self.data_world()
-        user_id = rows[('dbo', 'users')][0]['id']
+        user_id = rows[('public', 'users')][0]['id']
         rows[('other', 'audit')] = [{'id': 1, 'user_id': user_id}]
         foreign_keys.append(dict(constraint_id=100, is_disabled=False, is_not_trusted=False,
                                  child_schema='other', child_table='audit', child_column='user_id',
-                                 parent_schema='dbo', parent_table='users', parent_column='id'))
+                                 parent_schema='public', parent_table='users', parent_column='id'))
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection), self.assertRaises(SafetyError):
             cleanup.cleanup_owned(local, self.journal)
         self.assertEqual(connection.deletes, [])
@@ -373,7 +375,7 @@ class SafetyTests(unittest.TestCase):
             snapshots = 0
             def changed(statement):
                 nonlocal snapshots
-                if 'sys.foreign_keys' in str(statement):
+                if 'FROM pg_constraint fk' in str(statement):
                     snapshots += 1
                     if snapshots == 2:
                         return Result([])
@@ -385,14 +387,14 @@ class SafetyTests(unittest.TestCase):
 
     def test_T13_altered_marker_or_duplicate_identity_blocks(self):
         rows, foreign_keys = self.data_world()
-        rows[('dbo', 'users')][0]['email'] = 'foreign@example.invalid'
+        rows[('public', 'users')][0]['email'] = 'foreign@example.invalid'
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection), self.assertRaises(SafetyError):
             cleanup.cleanup_owned(local, self.journal)
         self.assertEqual(connection.deletes, [])
 
     def test_T13_ambiguous_session_recovery_blocks(self):
         rows, foreign_keys = self.data_world()
-        rows[('dbo', 'sesiones_chat')].append(dict(rows[('dbo', 'sesiones_chat')][0], id=str(uuid.uuid4())))
+        rows[('public', 'sesiones_chat')].append(dict(rows[('public', 'sesiones_chat')][0], id=str(uuid.uuid4())))
         self.journal.data['resources'][-1].update(id=None, state='planned')
         self.journal.save()
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection), self.assertRaises(SafetyError):
@@ -421,10 +423,10 @@ class SafetyTests(unittest.TestCase):
 
     def test_T13_reflected_uuid_columns_accept_journal_strings(self):
         identifier = str(uuid.uuid4())
-        table = Table('uuid_check', MetaData(), Column('id', UNIQUEIDENTIFIER(as_uuid=True)))
-        cleanup.string_uuid_columns({('dbo', 'uuid_check'): table})
-        processor = table.c.id.type.bind_processor(MSDialect_pyodbc())
-        self.assertEqual(processor(identifier), identifier.replace('-', ''))
+        table = Table('uuid_check', MetaData(), Column('id', UUID(as_uuid=True)))
+        cleanup.string_uuid_columns({('public', 'uuid_check'): table})
+        processor = table.c.id.type.result_processor(dialect(), None)
+        self.assertEqual(processor(uuid.UUID(identifier)), identifier)
 
     def fixture_builder(self, backend):
         real_models = __import__('models')
@@ -531,7 +533,7 @@ class SafetyTests(unittest.TestCase):
     def test_T20_natural_import_not_committed_can_be_cleaned(self):
         rows, foreign_keys = self.natural_world()
         for name in ('users', 'estudiante_cursos', 'user_roles'):
-            rows[('dbo', name)] = []
+            rows[('public', name)] = []
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection):
             cleanup.cleanup_owned(local, self.journal)
             self.assertFalse(any(connection.rows.values()))
@@ -554,7 +556,7 @@ class SafetyTests(unittest.TestCase):
 
     def test_T20_natural_marker_never_adopts_a_changed_tenant(self):
         rows, foreign_keys = self.natural_world()
-        rows[('dbo', 'users')][0]['institucion_id'] = str(uuid.uuid4())
+        rows[('public', 'users')][0]['institucion_id'] = str(uuid.uuid4())
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection), self.assertRaises(SafetyError):
             cleanup.cleanup_owned(local, self.journal)
         self.assertEqual(connection.deletes, [])
@@ -562,9 +564,9 @@ class SafetyTests(unittest.TestCase):
     def test_T20_natural_marker_known_child_requires_still_owned_user(self):
         rows, foreign_keys = self.natural_world()
         child = self.journal.data['resources'][-1]
-        child.update(id=rows[('dbo', 'estudiante_cursos')][0]['id'], state='created')
+        child.update(id=rows[('public', 'estudiante_cursos')][0]['id'], state='created')
         self.journal.save()
-        rows[('dbo', 'users')] = []
+        rows[('public', 'users')] = []
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection), self.assertRaises(SafetyError):
             cleanup.cleanup_owned(local, self.journal)
         self.assertEqual(connection.deletes, [])
@@ -572,7 +574,7 @@ class SafetyTests(unittest.TestCase):
     def test_T20_duplicate_natural_and_uuid_enrollment_block(self):
         rows, foreign_keys = self.natural_world()
         user = next(r for r in self.journal.data['resources'] if r['entity'] == 'users')
-        self.journal.committed(user, rows[('dbo', 'users')][0]['id'])
+        self.journal.committed(user, rows[('public', 'users')][0]['id'])
         self.journal.reserve('estudiante_cursos', dict(user_id=user['id'], curso_id=20))
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection), self.assertRaises(SafetyError):
             cleanup.cleanup_owned(local, self.journal)
@@ -759,7 +761,7 @@ class SafetyTests(unittest.TestCase):
         self.journal.data['mode'] = 'system'
         self.journal.save()
         resource = self.journal.reserve('configuracion_ia', dict(curso_id=20), 20)
-        rows[('dbo', 'configuracion_ia')] = [dict(curso_id=20)]
+        rows[('public', 'configuracion_ia')] = [dict(curso_id=20)]
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection):
             cleanup.cleanup_owned(local, ownership.OwnershipJournal.load(self.journal.path))
             self.assertFalse(any(connection.rows.values()))
@@ -779,7 +781,7 @@ class SafetyTests(unittest.TestCase):
 
     def test_T20_unregistered_config_still_blocks_all_cleanup(self):
         rows, foreign_keys = self.data_world(include_session=False)
-        rows[('dbo', 'configuracion_ia')] = [dict(curso_id=20)]
+        rows[('public', 'configuracion_ia')] = [dict(curso_id=20)]
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection), self.assertRaises(SafetyError):
             cleanup.cleanup_owned(local, self.journal)
         self.assertEqual(connection.deletes, [])
@@ -797,10 +799,10 @@ class SafetyTests(unittest.TestCase):
         self.journal.data['mode'] = 'system'
         self.journal.save()
         self.journal.reserve('configuracion_ia', dict(curso_id=20), 20)
-        rows[('dbo', 'configuracion_ia')] = [dict(curso_id=21)]
+        rows[('public', 'configuracion_ia')] = [dict(curso_id=21)]
         with self.controlled_cleanup(rows, foreign_keys) as (local, connection):
             cleanup.cleanup_owned(local, self.journal)
-            self.assertEqual(connection.rows[('dbo', 'configuracion_ia')], [dict(curso_id=21)])
+            self.assertEqual(connection.rows[('public', 'configuracion_ia')], [dict(curso_id=21)])
             self.assertNotIn('configuracion_ia', connection.deletes)
 
     def test_T20_config_upgrade_only_reserves_absent_config_on_verified_owned_course(self):
@@ -812,7 +814,7 @@ class SafetyTests(unittest.TestCase):
         course = next(r for r in self.journal.data['resources'] if r['entity'] == 'cursos')
         models = Mock()
         models.ConfiguracionIA.query.filter_by.return_value.first.return_value = None
-        with patch.object(system_support, 'read_candidates', return_value=[(course, rows[('dbo', 'cursos')][0])]), \
+        with patch.object(system_support, 'read_candidates', return_value=[(course, rows[('public', 'cursos')][0])]), \
                 patch.object(system_support.importlib, 'import_module', return_value=models):
             result = system_support.reserve_course_config(Mock(), self.journal)
             self.assertTrue(result['intent_registered'])
@@ -831,7 +833,7 @@ class SafetyTests(unittest.TestCase):
         before = copy.deepcopy(self.journal.data)
         models = Mock()
         models.ConfiguracionIA.query.filter_by.return_value.first.return_value = object()
-        with patch.object(system_support, 'read_candidates', return_value=[(course, rows[('dbo', 'cursos')][0])]), \
+        with patch.object(system_support, 'read_candidates', return_value=[(course, rows[('public', 'cursos')][0])]), \
                 patch.object(system_support.importlib, 'import_module', return_value=models), self.assertRaises(SafetyError):
             system_support.reserve_course_config(Mock(), self.journal)
         self.assertEqual(self.journal.data, before)

@@ -14,9 +14,10 @@ from sqlalchemy import text
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db
 from config import config
+from database_config import build_database_url, configure_database_engine
 
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(interpolate=False)
 
 
 limiter = Limiter(
@@ -134,14 +135,12 @@ def create_app(config_name=None):
     configure_logging(app)
     register_request_logging(app)
 
-    # Enforce that a real database URI is configured.
-    if not app.config.get('SQLALCHEMY_DATABASE_URI'):
-        raise RuntimeError(
-            "No database configured. Set DATABASE_URL to the SQL Server connection URL."
-        )
+    app.config['SQLALCHEMY_DATABASE_URI'] = build_database_url()
 
     # Initialize extensions
     db.init_app(app)
+    with app.app_context():
+        configure_database_engine(db.engine)
     JWTManager(app)
     limiter.init_app(app)
 
@@ -167,9 +166,13 @@ def create_app(config_name=None):
     @app.get('/readyz')
     @limiter.exempt
     def readiness_check():
-        """Readiness probe: confirma la conectividad con SQL Server."""
+        """Readiness probe: confirma la conectividad con PostgreSQL 18."""
         try:
             db.session.execute(text('SELECT 1'))
+            version = int(db.session.execute(text('SHOW server_version_num')).scalar_one())
+            if not 180000 <= version < 190000:
+                app.logger.error('unsupported_postgresql_version')
+                return jsonify({'status': 'unavailable'}), 503
         except Exception:
             app.logger.exception('database_readiness_failed')
             return jsonify({'status': 'unavailable'}), 503

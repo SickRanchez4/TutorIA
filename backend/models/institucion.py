@@ -36,7 +36,7 @@ class Institucion(db.Model):
     """Tenant organizations in multi-tenancy system"""
     __tablename__ = 'instituciones'
     
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = db.Column(db.Uuid(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
     nombre = db.Column(db.String(255), nullable=False)
     dominio_permitido = db.Column(db.String(100), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -65,8 +65,8 @@ class Suscripcion(db.Model):
     """Subscription management with token quotas"""
     __tablename__ = 'suscripciones'
     
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    institucion_id = db.Column(db.String(36), db.ForeignKey('instituciones.id', ondelete='CASCADE'), nullable=False, unique=True)
+    id = db.Column(db.Uuid(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    institucion_id = db.Column(db.Uuid(as_uuid=False), db.ForeignKey('instituciones.id', ondelete='CASCADE'), nullable=False, unique=True)
     plan_id = db.Column(db.Integer, db.ForeignKey('planes.id'), nullable=False)
     limite_tokens_mensual = db.Column(db.BigInteger, nullable=False)
     fecha_inicio = db.Column(db.DateTime, nullable=False)

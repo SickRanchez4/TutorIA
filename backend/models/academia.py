@@ -10,7 +10,7 @@ class Curso(db.Model):
     __tablename__ = 'cursos'
 
     id = db.Column(db.Integer, primary_key=True)
-    institucion_id = db.Column(db.String(36), db.ForeignKey('instituciones.id', ondelete='CASCADE'), nullable=False)
+    institucion_id = db.Column(db.Uuid(as_uuid=False), db.ForeignKey('instituciones.id', ondelete='CASCADE'), nullable=False)
     nombre = db.Column(db.String(255), nullable=False)
     codigo = db.Column(db.String(50), nullable=True)
     descripcion = db.Column(db.String(1000), nullable=True)
@@ -31,8 +31,8 @@ class EstudianteCurso(db.Model):
     """Student enrollment in a course - direct course assignment (no groups)."""
     __tablename__ = 'estudiante_cursos'
     
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = db.Column(db.String(36), db.ForeignKey('users.id', ondelete='NO ACTION'), nullable=True)
+    id = db.Column(db.Uuid(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(db.Uuid(as_uuid=False), db.ForeignKey('users.id', ondelete='NO ACTION'), nullable=True)
     curso_id = db.Column(db.Integer, db.ForeignKey('cursos.id', ondelete='NO ACTION'), nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     fecha_inscripcion = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

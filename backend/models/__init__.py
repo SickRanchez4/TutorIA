@@ -5,7 +5,7 @@ db = SQLAlchemy()
 # Association table for many-to-many users <-> roles
 user_roles = db.Table(
 	'user_roles',
-	db.Column('user_id', db.String(36), db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+	db.Column('user_id', db.Uuid(as_uuid=False), db.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
 	db.Column('role_id', db.Integer, db.ForeignKey('roles.id', ondelete='CASCADE'), primary_key=True),
 )
 

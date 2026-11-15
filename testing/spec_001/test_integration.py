@@ -193,5 +193,5 @@ class IntegrationTests(unittest.TestCase):
                     self.record(f'Matrícula={enrollment}, título={title}; HTTP esperado/obtenido={expected}, persistidas={len(persisted)}.')
                 # No message/provider operation belongs to this integration case.
                 self.assertEqual(self.local.db.session.execute(text(
-                    'SELECT COUNT(*) FROM dbo.mensajes_chat m JOIN dbo.sesiones_chat s ON s.id=m.sesion_chat_id WHERE s.user_id=:user_id'
+                    'SELECT COUNT(*) FROM public.mensajes_chat m JOIN public.sesiones_chat s ON s.id=m.sesion_chat_id WHERE s.user_id=:user_id'
                 ), {'user_id': user_id}).scalar_one(), 0)

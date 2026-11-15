@@ -6,6 +6,8 @@
 
 ## Alcance actual
 
+**Cambio de plataforma (2026-11-14):** la [SPEC-008](../docs/specs/spec-008-postgresql/spec.md) adapta driver, UUID, consultas y protecciones a PostgreSQL 18.x. Los resultados aprobados descritos abajo son históricos de SQL Server; no acreditan el soporte adaptado ni la nueva base. Por decisión del desarrollador no se ejecutan suites ni integración durante este cambio. Reinstalar las dependencias del entorno propio antes de futuras ejecuciones.
+
 T1–T24 completan proyecto, grafos, pruebas, continuidad y evaluación. **Hay 23 pruebas aisladas, 53 controles simulados y cuatro casos de integración I-1…I-4**, algunos con subtests. Integración T18 aprobada y limpiada. Sistema S-1/S-3/S-3b aprobado, S-2 fallido y S-001 abierto; no se corrigen bugs del producto en esta spec. RNF-6 fallido por mensajes propios del runner en inglés (H-004). Cuatro conjuntos limpiados con verificación postcommit y Excel eliminado; servidores detenidos. [Evaluación final](../docs/specs/spec-001-tests/evidence.md#evaluación-final-t23t24-2026-09-30).
 
 Este proyecto conserva sus dependencias y entorno virtual propios. No modifica ni comparte el entorno del frontend o backend. [support.py](support.py) importa temporalmente la lógica existente, evitando la carga de secretos y bloqueando conexiones; no crea la aplicación completa ni inicializa SQL.
@@ -63,11 +65,11 @@ El [ejecutor](run_tests.py) carga solo los tres módulos aislados explícitos: n
 
 Cada prueba vuelve a importar los algoritmos en un contexto acotado. Las consultas y persistencia se sustituyen en su punto de uso; los modelos, normalización y validadores existentes se conservan cuando corresponde. La vista de conversaciones se desenvuelve para comprobar su cuerpo, **no sus decoradores**. Un fallo de escritura simulado comprueba rollback sin intentar corromper SQL.
 
-El soporte anula la carga automática dotenv antes de importar configuración, proporciona una clave efímera y bloquea lectura dotenv, conexiones SQLAlchemy/ODBC y peticiones requests. Si un handler captura el error del guardia, la salida del contexto igualmente falla por el intento. Los mocks, entorno, ruta y módulos se liberan incluso con errores. Esto protege los puntos usados por los módulos actuales; no es un sandbox para código arbitrario.
+El soporte anula la carga automática dotenv antes de importar configuración, proporciona una clave efímera y bloquea lectura dotenv, conexiones SQLAlchemy/psycopg y peticiones requests. Si un handler captura el error del guardia, la salida del contexto igualmente falla por el intento. Los mocks, entorno, ruta y módulos se liberan incluso con errores. Esto protege los puntos usados por los módulos actuales; no es un sandbox para código arbitrario.
 
 ## Controles de seguridad y soporte, sin SQL real
 
-El flag `--safety` selecciona los 53 controles de [test_local_safety.py](spec_001/test_local_safety.py), con persistencia, HTTP y configuración simulados. T14 ejecutó los 31 originales; 15 posteriores comprobaron soporte de sistema y siete adicionales la dependencia automática del curso y su reserva previa. No son recorridos funcionales. El ejecutor bloquea SQL/ODBC/HTTP/lectura dotenv reales; la suite predeterminada conserva los 23 casos de algoritmos.
+El flag `--safety` selecciona los 53 controles de [test_local_safety.py](spec_001/test_local_safety.py), con persistencia, HTTP y configuración simulados. T14 ejecutó los 31 originales; 15 posteriores comprobaron soporte de sistema y siete adicionales la dependencia automática del curso y su reserva previa. No son recorridos funcionales. El ejecutor bloquea SQL/psycopg/HTTP/lectura dotenv reales; la suite predeterminada conserva los 23 casos de algoritmos.
 
 ```powershell
 $report = '.\docs\specs\spec-001-tests\evidence\safety-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.txt'
@@ -76,13 +78,13 @@ $testExitCode = $LASTEXITCODE
 if ($testExitCode -ne 0) { throw "Los controles no pasaron: código $testExitCode." }
 ```
 
-Los registros temporales del harness se eliminan al salir. Las verificaciones controladas no acreditan permisos, restricciones, concurrencia ni limpieza sobre SQL Server real. La regresión de 23 casos tampoco lo hace.
+Los registros temporales del harness se eliminan al salir. Las verificaciones controladas no acreditan permisos, restricciones, concurrencia ni limpieza sobre PostgreSQL real. La regresión de 23 casos tampoco lo hace.
 
 ## Datos locales optativos y recuperación
 
 El [comando de datos locales](run_local_data.py) es independiente de las suites. **No se ha ejecutado contra SQL en T10–T14.** Sus acciones son `check`, `prepare --case capacity|students|conversations` y `cleanup --ownership <ruta del registro>`. Cada acción se inicia mediante `python -m testing.run_local_data` usando el intérprete propio desde la raíz, en un proceso separado. No ejecuta I-1…I-4, ni tiene un flag de confirmación automática.
 
-`check` lee la configuración existente solo al solicitarlo, verifica en lectura identidad de máquina/base, tablas/columnas/PK/FK, roles, visibilidad de metadatos y permisos de SELECT/INSERT/UPDATE/DELETE. Solicita escribir exactamente `AUTORIZO <etiqueta mostrada>`. No crea fixtures. Si existe DATABASE_URL tanto en el proceso como en la configuración del backend y difieren, bloquea; no se imprime ninguna conexión o secreto. Los destinos remotos, ambiguos, redirigibles mediante parámetros no evaluados o sin identidad local comprobable se rechazan. Solo se aceptan mssql+pyodbc, loopback o el nombre identificado por el sistema operativo; no se aceptan alias DNS arbitrarios. Triggers activos sobre las tablas escritas también bloquean por efectos no evaluados.
+`check` lee los campos `DB_*` de `backend/.env` y del proceso solo al solicitarlo; conflictos entre ambos bloquean antes de conectar. Verifica PostgreSQL 18.x, dirección local del servidor, base/puerto, esquema `public`, tablas/columnas/PK/FK, roles y permisos de tablas/secuencias. Solicita escribir exactamente `AUTORIZO <etiqueta mostrada>`. No crea fixtures ni imprime conexión/secreto. Solo admite `postgresql+psycopg` con loopback o el nombre del equipo, sin alias DNS arbitrarios ni parámetros de redirección; rechaza variables libpq `PG*`, triggers de usuario activos y tablas con RLS. El PostgreSQL externo de producción no está autorizado por estos comandos locales. Las operaciones de escritura y limpieza requieren permisos/bloqueos adecuados y una nueva confirmación; no reutilizar journals SQL Server.
 
 `prepare` repite esas comprobaciones y confirmación, crea una nueva carpeta de evidencia por UUID y guarda el registro de propiedad antes de cada inserción. Usa modelos reales, fechas UTC sin zona, instituciones/planes/users/cursos propios y roles compartidos de solo lectura. La contraseña ficticia y su hash no se imprimen ni guardan en el registro. Al terminar queda el registro en estado `ready`: **esta acción conserva los fixtures hasta solicitar limpieza**. Un fallo parcial intenta limpiar inmediatamente y termina con código no satisfactorio aunque la limpieza pase. No se ejecuta seed, DDL, migración ni llamada de IA.
 

@@ -34,10 +34,10 @@ class RagIngestionJob(db.Model):
     """Auditable RAG ingestion request and its n8n processing outcome."""
     __tablename__ = 'rag_ingestion_jobs'
 
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    institucion_id = db.Column(db.String(36), db.ForeignKey('instituciones.id', ondelete='CASCADE'), nullable=False, index=True)
+    id = db.Column(db.Uuid(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    institucion_id = db.Column(db.Uuid(as_uuid=False), db.ForeignKey('instituciones.id', ondelete='CASCADE'), nullable=False, index=True)
     curso_id = db.Column(db.Integer, db.ForeignKey('cursos.id', ondelete='NO ACTION'), nullable=False, index=True)
-    coordinador_id = db.Column(db.String(36), nullable=True)
+    coordinador_id = db.Column(db.Uuid(as_uuid=False), nullable=True)
     estado = db.Column(db.String(20), nullable=False, default='queued', index=True)
     intento = db.Column(db.Integer, nullable=False, default=1)
     documentos_json = db.Column(db.Text, nullable=False, default='[]')
@@ -77,8 +77,8 @@ class SesionChat(db.Model):
     """Chat thread/conversation"""
     __tablename__ = 'sesiones_chat'
     
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = db.Column(db.String(36), db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    id = db.Column(db.Uuid(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = db.Column(db.Uuid(as_uuid=False), db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     curso_id = db.Column(db.Integer, db.ForeignKey('cursos.id', ondelete='CASCADE'), nullable=False)
     titulo = db.Column(db.String(200), default='Nueva Conversación')
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -106,11 +106,11 @@ class MensajeChat(db.Model):
     """Individual message in chat thread with RAG citations"""
     __tablename__ = 'mensajes_chat'
     
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    sesion_chat_id = db.Column(db.String(36), db.ForeignKey('sesiones_chat.id', ondelete='CASCADE'), nullable=False)
+    id = db.Column(db.Uuid(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    sesion_chat_id = db.Column(db.Uuid(as_uuid=False), db.ForeignKey('sesiones_chat.id', ondelete='CASCADE'), nullable=False)
     rol = db.Column(db.String(20), nullable=False)  # 'user' or 'assistant'
-    contenido = db.Column(db.String(3000), nullable=False)
-    citas_contexto_json = db.Column(db.String(1000), nullable=True)  # Array of {archivo, pagina}
+    contenido = db.Column(db.Text, nullable=False)
+    citas_contexto_json = db.Column(db.Text, nullable=True)  # Array of {archivo, pagina}
     imagen_nombre = db.Column(db.String(255), nullable=True)
     tipo_interaccion = db.Column(db.String(50), default='consulta', nullable=False)  # consulta, practicar, recurso_sintetico
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

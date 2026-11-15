@@ -10,18 +10,22 @@ from testing.ownership import ENTITIES, identity_column, validate_record
 DELETE_ORDER = ('sesiones_chat', 'estudiante_cursos', 'configuracion_ia', 'users', 'cursos',
                 'suscripciones', 'instituciones', 'planes')
 FK_QUERY = """
-SELECT fk.object_id AS constraint_id, fk.is_disabled, fk.is_not_trusted,
-       cs.name AS child_schema, ct.name AS child_table, cc.name AS child_column,
-       ps.name AS parent_schema, pt.name AS parent_table, pc.name AS parent_column
-FROM sys.foreign_keys fk
-JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
-JOIN sys.tables ct ON ct.object_id = fk.parent_object_id
-JOIN sys.schemas cs ON cs.schema_id = ct.schema_id
-JOIN sys.columns cc ON cc.object_id = ct.object_id AND cc.column_id = fkc.parent_column_id
-JOIN sys.tables pt ON pt.object_id = fk.referenced_object_id
-JOIN sys.schemas ps ON ps.schema_id = pt.schema_id
-JOIN sys.columns pc ON pc.object_id = pt.object_id AND pc.column_id = fkc.referenced_column_id
-ORDER BY fk.object_id, fkc.constraint_column_id
+SELECT fk.oid AS constraint_id,
+       EXISTS (SELECT 1 FROM pg_trigger tr
+               WHERE tr.tgconstraint = fk.oid AND tr.tgenabled <> 'O') AS is_disabled,
+       NOT fk.convalidated AS is_not_trusted,
+       cs.nspname AS child_schema, ct.relname AS child_table, cc.attname AS child_column,
+       ps.nspname AS parent_schema, pt.relname AS parent_table, pc.attname AS parent_column
+FROM pg_constraint fk
+JOIN pg_class ct ON ct.oid = fk.conrelid
+JOIN pg_namespace cs ON cs.oid = ct.relnamespace
+JOIN pg_class pt ON pt.oid = fk.confrelid
+JOIN pg_namespace ps ON ps.oid = pt.relnamespace
+CROSS JOIN LATERAL unnest(fk.conkey, fk.confkey) WITH ORDINALITY AS keys(child, parent, position)
+JOIN pg_attribute cc ON cc.attrelid = ct.oid AND cc.attnum = keys.child
+JOIN pg_attribute pc ON pc.attrelid = pt.oid AND pc.attnum = keys.parent
+WHERE fk.contype = 'f'
+ORDER BY fk.oid, keys.position
 """
 
 
@@ -30,7 +34,7 @@ def canonical(value):
 
 
 def string_uuid_columns(tables):
-    """Reflected SQL Server UUIDs must bind the journal's strings, not UUID objects."""
+    """Reflected UUID columns bind the journal's strings, not UUID objects."""
     for table in tables.values():
         for column in table.columns:
             if isinstance(column.type, Uuid):
@@ -61,7 +65,7 @@ def resolve_owned(connection, tables, journal):
     # Resolve parents first even if reservations were made after an existing course.
     resources = sorted(journal.data['resources'], key=lambda r: ENTITIES.index(r['entity']))
     for resource in resources:
-        table = tables[('dbo', resource['entity'])]
+        table = tables[('public', resource['entity'])]
         identity_key = identity_column(resource['entity'])
         marker = database_marker(resource, users)
         if marker is None:
@@ -113,7 +117,7 @@ def check_dependents(connection, tables, foreign_keys, candidates):
         entity = resource['entity']
         for columns in foreign_keys.values():
             first = columns[0]
-            if first['parent_schema'] != 'dbo' or first['parent_table'] != entity:
+            if first['parent_schema'] != 'public' or first['parent_table'] != entity:
                 continue
             if first['is_disabled'] or first['is_not_trusted']:
                 raise SafetyError('Restricción FK no verificable; limpieza bloqueada.')
@@ -123,10 +127,10 @@ def check_dependents(connection, tables, foreign_keys, candidates):
                   for column in columns)
             ))).mappings().all()
             for row in rows:
-                if (first['child_schema'] == 'dbo' and first['child_table'] == 'user_roles'
+                if (first['child_schema'] == 'public' and first['child_table'] == 'user_roles'
                         and entity == 'users' and canonical(row['user_id']) == canonical(parent['id'])):
                     associations.append(dict(row))
-                elif (first['child_schema'] != 'dbo'
+                elif (first['child_schema'] != 'public'
                       or identity_column(first['child_table']) not in row
                       or (first['child_table'], canonical(row[identity_column(first['child_table'])])) not in owned):
                     raise SafetyError('Dependencia inesperada o ajena; se conserva y se registra residuo.')
@@ -149,11 +153,11 @@ def cleanup_owned(local, journal):
                 foreign_keys = defaultdict(list)
                 original_fks = [dict(row) for row in connection.execute(text(FK_QUERY)).mappings()]
                 for row in original_fks:
-                    if row['parent_schema'] == 'dbo' and row['parent_table'] == 'user_roles':
+                    if row['parent_schema'] == 'public' and row['parent_table'] == 'user_roles':
                         raise SafetyError('Dependencia de asociación compartida no evaluada; limpieza bloqueada.')
-                    if row['parent_schema'] == 'dbo' and row['parent_table'] in ENTITIES:
+                    if row['parent_schema'] == 'public' and row['parent_table'] in ENTITIES:
                         foreign_keys[row['constraint_id']].append(dict(row))
-                keys = {('dbo', name) for name in (*ENTITIES, 'user_roles')}
+                keys = {('public', name) for name in (*ENTITIES, 'user_roles')}
                 keys.update((rows[0]['child_schema'], rows[0]['child_table'])
                             for rows in foreign_keys.values())
                 metadata = MetaData()
@@ -165,7 +169,7 @@ def cleanup_owned(local, journal):
                 preparer = connection.dialect.identifier_preparer
                 for schema, name in sorted(keys):
                     qualified = preparer.quote_schema(schema) + '.' + preparer.quote(name)
-                    connection.execute(text(f'SELECT TOP (1) 1 FROM {qualified} WITH (TABLOCKX, HOLDLOCK)'))
+                    connection.execute(text(f'LOCK TABLE {qualified} IN ACCESS EXCLUSIVE MODE'))
                 if [dict(row) for row in connection.execute(text(FK_QUERY)).mappings()] != original_fks:
                     raise SafetyError('El esquema cambió durante la verificación; limpieza bloqueada.')
                 if verify_destination(connection, local.database) != local.label:
@@ -174,14 +178,14 @@ def cleanup_owned(local, journal):
                 associations = check_dependents(connection, tables, foreign_keys, candidates)
                 users = {r['ownership_marker']['email']: row['id'] for r, row in candidates
                          if r['entity'] == 'users'}
-                roles = tables[('dbo', 'user_roles')]
+                roles = tables[('public', 'user_roles')]
                 for association in {tuple(sorted(row.items())) for row in associations}:
                     values = dict(association)
                     connection.execute(delete(roles).where(and_(
                         *(roles.c[key] == value for key, value in values.items())
                     )))
                 for entity in DELETE_ORDER:
-                    table = tables[('dbo', entity)]
+                    table = tables[('public', entity)]
                     for resource, row in candidates:
                         if resource['entity'] == entity:
                             result = connection.execute(delete(table).where(and_(

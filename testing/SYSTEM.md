@@ -24,7 +24,7 @@ No derivar éxito de `$?` de `Tee-Object` ni de la mera existencia del archivo. 
 
 ## 2. Autorización y recursos
 
-La aplicación debe usar el mismo SQL Server local verificado por el preparador. La última integración usó RASTONE-PC / Tutoria-demo, pero **ese permiso no autoriza sistema**: cada preparación/verificación/recuperación revalida configuración e identidad y pide escribir exactamente `AUTORIZO <etiqueta actual>`. No copiar conexiones ni modificar configuración de aplicación. No ejecutar esquema, seed, migraciones o reset de IDENTITY.
+La aplicación debe usar el mismo PostgreSQL 18.x local verificado por el preparador mediante los campos `DB_*`. La integración histórica de SQL Server no verifica la nueva base ni **autoriza sistema**: cada preparación/verificación/recuperación revalida configuración e identidad y pide escribir exactamente `AUTORIZO <etiqueta actual>`. No copiar conexiones ni reutilizar journals de la base anterior. No ejecutar esquema, seed, migraciones ni reiniciar secuencias desde estos recorridos. El soporte adaptado a PostgreSQL no se ejecutó como parte de SPEC-008.
 
 Preparar con frontend/backend detenidos y sin otros escritores. Para los recorridos iniciar el backend existente en modo local y el frontend con su script `dev`, solo en loopback, usando los mismos parámetros de conexión existentes. El frontend usa `VITE_API_URL` o `http://localhost:5000/api`; Vite no tiene proxy configurado. Comprobar el origen realmente usado en el navegador y los puertos, no asumir que disponibilidad HTTP prueba el destino SQL. No conservar contraseña ni token en capturas. Al terminar cerrar sesión, limpiar el almacenamiento de ese origen y cerrar la pestaña.
 

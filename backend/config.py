@@ -3,7 +3,7 @@ from datetime import timedelta
 
 # Ensure environment variables from a local .env are loaded
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(interpolate=False)
 
 
 class Config:
@@ -15,8 +15,6 @@ class Config:
             "JWT_SECRET_KEY must be set in environment variables. "
         )
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
-    # Única fuente de configuración de la conexión, en todos los entornos.
-    SQLALCHEMY_DATABASE_URI = (os.getenv('DATABASE_URL') or '').strip() or None
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     MAX_CONTENT_LENGTH = int(os.getenv('MAX_CONTENT_LENGTH', str(64 * 1024 * 1024)))
     RATELIMIT_STORAGE_URI = os.getenv('RATELIMIT_STORAGE_URI', 'memory://')

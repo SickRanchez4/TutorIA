@@ -10,13 +10,13 @@ from unittest.mock import patch
 
 import dotenv
 from flask import Flask
-import pyodbc
+import psycopg
 import requests
 from sqlalchemy.engine import Engine
 
 
 BACKEND_PATH = Path(__file__).resolve().parents[1] / "backend"
-BACKEND_MODULES = ("app", "config", "models", "routes", "services")
+BACKEND_MODULES = ("app", "config", "database_config", "models", "routes", "services")
 
 
 def _backend_name(name):
@@ -49,8 +49,8 @@ def isolated_backend():
                 "sqlalchemy_connect": stack.enter_context(patch.object(
                     Engine, "connect", side_effect=AssertionError("SQL access blocked"),
                 )),
-                "odbc_connect": stack.enter_context(patch.object(
-                    pyodbc, "connect", side_effect=AssertionError("ODBC access blocked"),
+                "postgres_connect": stack.enter_context(patch.object(
+                    psycopg, "connect", side_effect=AssertionError("PostgreSQL access blocked"),
                 )),
                 "http_request": stack.enter_context(patch.object(
                     requests.sessions.Session, "request",

@@ -80,12 +80,12 @@ def main(argv=None):
 
     from testing.support import BACKEND_MODULES
     import dotenv
-    import pyodbc
+    import psycopg
     import requests
     from sqlalchemy.engine import Engine
 
     before_env, before_path = dict(os.environ), sys.path[:]
-    original_guards = (dotenv.load_dotenv, Engine.connect, pyodbc.connect, requests.sessions.Session.request)
+    original_guards = (dotenv.load_dotenv, Engine.connect, psycopg.connect, requests.sessions.Session.request)
     output = io.StringIO()
     modules = ('testing.spec_001.test_local_safety',) if args.safety else MODULES
     mode = 'controlled-safety' if args.safety else 'isolated'
@@ -117,7 +117,7 @@ def main(argv=None):
         with ExitStack() as stack:
             safety_guards = []
             if args.safety:
-                for owner, name in ((Engine, 'connect'), (pyodbc, 'connect'),
+                for owner, name in ((Engine, 'connect'), (psycopg, 'connect'),
                                     (requests.sessions.Session, 'request'), (dotenv.main.DotEnv, 'dict')):
                     safety_guards.append(stack.enter_context(patch.object(
                         owner, name, side_effect=AssertionError('Real I/O blocked in controlled safety suite'),
@@ -133,7 +133,7 @@ def main(argv=None):
                  for name in sys.modules for root in BACKEND_MODULES)
     restored = (
         dict(os.environ) == before_env and sys.path == before_path and not leaked
-        and (dotenv.load_dotenv, Engine.connect, pyodbc.connect, requests.sessions.Session.request) == original_guards
+        and (dotenv.load_dotenv, Engine.connect, psycopg.connect, requests.sessions.Session.request) == original_guards
     )
     print("Isolation state restored: " + str(restored), file=output)
     if not restored:

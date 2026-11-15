@@ -21,7 +21,7 @@ def get_active_model_price(provider=DEFAULT_PROVIDER, model=DEFAULT_MODEL, refer
         .filter(
             PrecioModeloIA.proveedor == provider,
             PrecioModeloIA.modelo == model,
-            PrecioModeloIA.is_active == True,  # noqa: E712 - emits SQL Server-compatible "= 1"
+            PrecioModeloIA.is_active.is_(True),
             PrecioModeloIA.vigente_desde <= now,
             (PrecioModeloIA.vigente_hasta.is_(None) | (PrecioModeloIA.vigente_hasta >= now)),
         )

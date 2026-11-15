@@ -8,15 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# SQL Server driver required by pyodbc and SQLAlchemy's mssql+pyodbc dialect.
+# psycopg[binary] includes libpq; no ODBC or Microsoft repository is required.
 RUN apt-get update \
-     && apt-get install --no-install-recommends -y ca-certificates curl unixodbc unixodbc-dev \
-     && curl -fsSL -o /tmp/packages-microsoft-prod.deb \
-         https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
-     && dpkg -i /tmp/packages-microsoft-prod.deb \
-     && rm /tmp/packages-microsoft-prod.deb \
-    && apt-get update \
-    && ACCEPT_EULA=Y apt-get install --no-install-recommends -y msodbcsql17 \
+    && apt-get install --no-install-recommends -y ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
