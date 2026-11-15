@@ -19,6 +19,7 @@ Plantilla documental sin aprobación ni implementación. Completar para una spec
 
 ## Estrategia de verificación
 
+Referenciar la decisión de pruebas registrada por el desarrollador en la spec antes de elaborar este plan: si se realizarán y su alcance. Detallar únicamente las pruebas incluidas, sus recursos y ejecución. Si se decidió no realizar pruebas, conservar esa decisión y sus límites de verificación, sin añadir casos obligatorios.
 
 ## Matriz de cobertura RF/RNF
 

@@ -1,9 +1,9 @@
 # Tareas de SPEC-002 — Interfaz y experiencia de usuario
 
 **Referencias:** [spec aprobada](spec.md), [plan aprobado](plan.md) y [Constitución](../constitution.md).  
-**Estado:** T01 respaldada por aprobación explícita del plan y paleta el 2026-10-31; T02–T05 completadas con evidencia histórica de preparación C0. C1–C5 pendientes, sin implementación UI. Lint baseline fallido, build satisfactorio con avisos; completar la captura no aprueba el producto. La consolidación documental no autoriza implementar C1–C5.
+**Estado:** T01 respaldada por aprobación explícita del plan y paleta el 2026-10-31; T02–T05 completadas con evidencia histórica de preparación C0. Refactor frontend previo a C1 incorporado, con lint/build posteriores satisfactorios y verificación controlada; C1–C5 pendientes de completar y verificar. No se cierran tareas por equivalencia con componentes del refactor.
 **Fecha:** 2026-09-30.
-**Actualización documental:** 2026-10-31; no modifica las fechas ni resultados de C0.
+**Actualización documental:** 2026-11-14; no modifica las fechas ni resultados de C0. Véase el [incremento previo a C1](evidence.md#refactorización-y-corrección-de-defectos-previa-a-c1-2026-10-31) y el [contexto del proyecto](../../project-context.md).
 
 ## Convenciones de ejecución
 
@@ -13,7 +13,7 @@
 - Las tareas de implementación se marcan solo con entregable y comprobación satisfactoria registrados. Las de ejecución/evaluación pueden cerrarse tras ejecutar y registrar fallos con decisión del responsable; eso no aprueba el comportamiento fallido. Falta de recurso o prueba no ejecutada no cumple una tarea que exige ejecutarla.
 - Cada comprobación deja caso `SPEC-002/UI-xx/caso`, esperado/obtenido, fecha, versión/cambios locales, modalidad, entorno, rol/tema/viewport pertinentes y evidencia saneada. Documentar pasos no equivale a ejecutarlos. En implementación, cubrir ambas variantes y el estado relevante; las verificaciones integrales de C5 amplían, no sustituyen esas comprobaciones.
 - Entregables de preparación: [inventario](inventory.md), [registro de pruebas](test.md), [casos y matriz](cases.md) y [baseline lint/build](evidence.md#baseline-de-construcción-t05-2026-09-30). El catálogo del frontend (UI-UX.md en su carpeta de documentación) sigue pendiente de implementación. T03 define resultados por RF/RNF, T04 diseña casos y cada tarea posterior añade sus evidencias al registro.
-- No reparar el defecto funcional previo de Excel, cambiar contratos/backend/SQL/n8n ni introducir dependencias sin aprobación. Las tareas de importación se limitan a presentación e interacción; resultados controlados no certifican envío o persistencia real.
+- No cambiar contratos/backend/SQL/n8n ni introducir dependencias sin aprobación. La reparación frontend de Excel fue autorizada e incorporada en el incremento previo a C1; su verificación con mock no cierra S-2 real. Las tareas UI de importación conservan su alcance de presentación e interacción.
 - Toda prueba con escrituras reales exige autorización nueva, destino local verificable, fixtures propios y recuperación aprobados. No ejecutar IA/indexación/notificaciones para estilos. No reutilizar permisos históricos; no persistir borradores ni secretos en evidencias.
 - Cada construcción termina con integración y sistema parciales, además del tratamiento de defectos PUDS. Tareas independientes de una misma construcción pueden avanzar en paralelo cuando compartan dependencias satisfechas; no ejecutar una etapa sobre resultados incompatibles pendientes sin decisión explícita.
 
@@ -59,6 +59,8 @@
 **Evidencia T05:** [baseline, lint real (código1) y build real (código0 con avisos)](evidence.md#baseline-de-construcción-t05-2026-09-30). Fuente intacta; reparación del lint previo pendiente de decisión, no realizada en C0.
 
 ## C1 — Apariencia
+
+**Conciliación antes de continuar:** reutilizar `RoleLayout`, `PageHeader`, `StatCard`, el perfil y las utilidades existentes. Las tareas posteriores conservan sus criterios completos —temas, accesibilidad, contratos y evidencia—; adaptar su plan al código actual sin duplicar componentes ni marcarlas completadas solo porque exista una parte.
 
 ### T06 — Formalizar la paleta verde/blanca en tokens
 **Requisitos:** RF-1, RF-4; RNF-2. **Depende de:** T02, T05.  

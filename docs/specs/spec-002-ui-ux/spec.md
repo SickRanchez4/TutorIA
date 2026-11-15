@@ -14,6 +14,8 @@ TutorIA necesita una experiencia coherente en toda su interfaz: no solo cambiar 
 
 Esta spec define **el comportamiento objetivo del incremento UI/UX**, no una descripción retrospectiva ni una declaración de trabajo implementado. Abarca la presentación e interacción de las funcionalidades existentes. No redefine sus reglas de negocio, permisos, contratos externos ni persistencia transaccional.
 
+**Estado de construcción al 2026-11-14:** C0 preparado y [refactor frontend previo a C1](evidence.md#refactorización-y-corrección-de-defectos-previa-a-c1-2026-10-31) incorporado; este último incluyó la corrección Excel autorizada por separado. C1–C5 y los criterios completos de esta spec siguen pendientes de completar/verificar. El punto de partida de §1.1 es histórico; la estructura actual y la continuidad se resumen en el [contexto del proyecto](../../project-context.md).
+
 ### 1.1 Punto de partida comprobado por lectura
 
 - Existe un tema oscuro en [frontend/src/plugins/vuetify.js](../../../frontend/src/plugins/vuetify.js), acompañado de colores oscuros fijos en [frontend/src/style.css](../../../frontend/src/style.css) y [frontend/tailwind.config.js](../../../frontend/tailwind.config.js). Añadir un selector no bastará para cubrir toda la interfaz.

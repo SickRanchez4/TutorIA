@@ -7,6 +7,8 @@
 **Commit de referencia:** `6b7b79bbfdbea5614ffe369330e55905fffe3c98`.  
 **Estado:** T1–T24 completadas como trabajo de pruebas y evaluación, no como aprobación íntegra. RF-5 fallido (S-001 abierto, corrección diferida fuera de esta spec); RNF-6 fallido (H-004, mensajes propios en inglés). Sistema S-1/S-3/S-3b aprobado y S-2 fallido; cuatro conjuntos limpiados, Excel eliminado y servidores detenidos. [Evaluación final](evidence.md#evaluación-final-t23t24-2026-09-30), [sistema](evidence.md#sistema-manual-t19t22-2026-09-30), [regresión futura](../../../testing/REGRESSION.md).
 
+**Seguimiento al 2026-11-14:** el estado anterior y las tablas conservan el veredicto histórico de esta evaluación. La corrección frontend de S-001 se incorporó posteriormente en el [refactor previo a C1 de SPEC-002](../spec-002-ui-ux/evidence.md#refactorización-y-corrección-de-defectos-previa-a-c1-2026-10-31), con envío comprobado solo contra API simulada. Falta reejecutar S-2 con sistema real autorizado para cerrar el defecto; no se convierte RF-5 en aprobado por esta nota. H-004 continúa abierto.
+
 Durante la preparación y las ejecuciones de consolidación se registraron cambios locales no incluidos en el commit de referencia. Los reportes conservan ese estado histórico aunque posteriormente se versionen los entregables. La versión realmente evaluada por futuras ejecuciones deberá registrar también los cambios locales relevantes. Las huellas siguientes identifican los archivos fuente revisados, no una ejecución de sus funciones.
 
 | Algoritmo | Fuente revisada | SHA-256 del archivo completo |

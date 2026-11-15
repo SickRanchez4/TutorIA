@@ -16,6 +16,8 @@ La dirección visual actualizada por el responsable es **verde y blanco, más lu
 
 **Decisión registrada el 2026-10-31:** ante la discrepancia entre T01 marcada y la cabecera propuesta, el responsable seleccionó explícitamente **«Apruebo el plan actual y su paleta»**. Se aprueba el contenido actual del plan, incluidos los códigos de §3.1, exclusiones y modalidades de verificación. Las parejas renderizadas siguen requiriendo pruebas de contraste. Esta decisión resuelve C0-G01 y permite cerrar T01 documentalmente; no se retrodata a C0 ni autoriza ejecutar C1–C5 durante la consolidación documental.
 
+**Seguimiento al 2026-11-14:** posteriormente se autorizó e incorporó el [refactor frontend previo a C1](evidence.md#refactorización-y-corrección-de-defectos-previa-a-c1-2026-10-31), incluida la reparación del enlace Excel como excepción expresa a la exclusión original. Se conservan aquí el plan aprobado y sus límites históricos. Antes de continuar, conciliar sus extracciones con los componentes ya existentes, sin duplicarlos ni dar por completados criterios pendientes. C1–C5 no están completos; S-2 real sigue pendiente. Véase el [contexto del proyecto](../../project-context.md).
+
 ### 1.1 Incluido
 
 - Login y estructura de panel de los tres roles; rutas y secciones internas, incluido perfil por rol.

@@ -2,6 +2,8 @@
 
 Resumen único de la preparación C0, referido por [test.md](test.md) y [tasks.md](tasks.md). Los archivos separados de entorno, baseline, validación y salidas de lint/build se consolidaron aquí el 2026-10-31. Commit de referencia: `6b7b79bbfdbea5614ffe369330e55905fffe3c98`, sin cambios de producto. C0 no implementa ni verifica interfaz: los 28 requisitos de UI siguen **no ejecutados**.
 
+**Lectura al 2026-11-14:** lo anterior identifica C0, no todo el estado actual. La sección final registra el refactor posterior previo a C1, incorporado en `35c6f3d` el 2026-11-05. Sus comprobaciones controladas no cierran los requisitos integrales; la referencia general está en [contexto del proyecto](../../project-context.md). No se repitieron pruebas para esta actualización documental.
+
 ## Entorno (T03, 2026-09-30)
 
 Inspección local sin arrancar navegador, app, SQL ni proveedores.

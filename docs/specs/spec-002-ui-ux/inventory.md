@@ -5,6 +5,8 @@
 **Commit base:** `6b7b79bbfdbea5614ffe369330e55905fffe3c98`. Frontend/backend sin diff contra HEAD al inspeccionar. Hay cambios documentales y soporte de pruebas locales no versionados; el commit por sí solo no identifica esos documentos.  
 **Referencias:** [plan](plan.md), [tareas](tasks.md), [spec](spec.md), [regresión](../../../testing/REGRESSION.md).
 
+**Vigencia:** inventario histórico del baseline C0, no de la estructura posterior. El refactor previo a C1 incorporó `RoleLayout`, `PageHeader`, `StatCard`, servicios/perfil compartidos y vistas separadas de chat/agenda; sus referencias por línea y decisiones de extracción deben conciliarse antes de continuar. Véanse la [evidencia del refactor](evidence.md#refactorización-y-corrección-de-defectos-previa-a-c1-2026-10-31) y el [contexto del proyecto](../../project-context.md). Se preserva el inventario original para trazabilidad.
+
 ## 1. Inventario de superficies
 
 Los códigos Pxx permiten asignar casos sin confundir una pestaña interna con una ruta. Todas las superficies requieren Claro/Oscuro; ninguna está migrada en C0.

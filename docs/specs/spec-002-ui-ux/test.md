@@ -1,7 +1,7 @@
 # Registro de pruebas — SPEC-002
 
-**Estado:** entregables T02–T05 de C0 completados; requisitos UI/UX **no ejecutados**. Lint baseline fallido y build satisfactorio con avisos. Este registro no aprueba la implementación por existir.
-**Actualización documental:** 2026-10-31; plan y paleta aprobados explícitamente, T01 respaldada y C0-G01 resuelto. C1–C5 siguen pendientes. No se alteraron reportes ni resultados históricos.
+**Estado:** entregables T02–T05 de C0 completados y refactor frontend previo a C1 incorporado; requisitos UI/UX **no ejecutados integralmente**. El lint baseline falló; lint/build posteriores fueron satisfactorios con el aviso previo de chunk. Revisión visual y Excel solo con API simulada, sin aprobación de los requisitos.
+**Actualización documental:** 2026-11-14; plan y paleta aprobados explícitamente el 2026-10-31, T01 respaldada y C0-G01 resuelto. C1–C5 siguen pendientes de completar y verificar. Se preservan reportes y resultados históricos; [contexto del proyecto](../../project-context.md).
 **Versión de producto inspeccionada:** `6b7b79bbfdbea5614ffe369330e55905fffe3c98`, sin cambios de producto al iniciar C0.  
 **Fecha de trabajo local:** 2026-09-30 (capturas posteriores a medianoche UTC se identifican con su offset).  
 **Referencias:** [spec](spec.md), [plan](plan.md), [tareas](tasks.md), [inventario T02](inventory.md), [entorno T03](evidence.md#entorno-t03-2026-09-30).
@@ -58,7 +58,7 @@ Cada fila se actualiza después de ejecutar los casos correspondientes. Las tare
 | RF-9 | UI-04, UI-07, UI-09 | No ejecutado | — | Dirty/foco/confirmaciones por evaluar |
 | RF-10 | UI-03, UI-04, UI-07 | No ejecutado | — | No autenticación ni HTTP real en C0 |
 | RF-11 | UI-05, UI-09 | No ejecutado | — | Listados y paginación por evaluar |
-| RF-12 | UI-05 | No ejecutado | — | Importador previo no se repara; resultados controlados no prueban envío |
+| RF-12 | UI-05 | No ejecutado | — | Corrección frontend previa a C1 comprobada con mock; S-2 real y criterios UI-05 pendientes |
 | RF-13 | UI-06, UI-04 | No ejecutado | — | No RAG/IA real autorizado |
 | RF-14 | UI-07 | No ejecutado | — | No mensajes o sesiones nuevos en C0 |
 | RF-15 | UI-07, UI-09 | No ejecutado | — | Dictado real y permisos no comprobados |
