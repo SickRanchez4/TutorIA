@@ -10,6 +10,7 @@
 - Contexto del proyecto al 2026-11-14 como punto de entrada al desarrollo: producto, actores, organización del repositorio, arquitectura, trazabilidad CU/HU, brechas y cinco specs propuestas para completar el producto, además de SPEC-002.
 
 ### Changed
+- Administración: altas de instituciones y asignación de suscripciones en diálogos, listados a ancho completo y búsquedas por nombre institucional; selector de Coordinadores ordenado alfabéticamente. Verificación focalizada de navegador con API simulada, lint y build.
 - PostgreSQL 18.x externo sustituye SQL Server para instalaciones nuevas (SPEC-008): driver psycopg, UUID nativos conservados como strings en API, scripts PostgreSQL de esquema/seed y soporte dependiente adaptado. Sin migración de datos ni servicio de base en Compose.
 - Configuración mediante `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` y `DB_SSLMODE`; URL construida internamente y rechazo explícito de `DATABASE_URL`. Imagen backend sin ODBC; documentación y ejemplos alineados. Verificación inicial de configuración/compilación sin suites; instalación y comprobación operativa real autorizadas posteriormente, con disponibilidad y tres logins correctos, sin certificación integral.
 - Corrección editorial de los enlaces de Spec-000 tras su traslado y de las cuentas/cantidades del seed descritas en README, sin modificar SQL ni el producto.

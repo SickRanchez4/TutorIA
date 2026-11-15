@@ -73,3 +73,23 @@ Comprobación automatizada con Node: 8 archivos Markdown, 179 enlaces válidos, 
 Reorganización: `RoleLayout` (shell común de los tres roles), `PageHeader`, `StatCard`, `ProfileSection` autónomo sobre `authService`, `utils/format.js`, `createToast` reactivo, y el panel del estudiante dividido en `estudiante/EstudianteChat.vue` y `estudiante/EstudianteAgenda.vue`. Las referencias por línea del [inventario](inventory.md) son anteriores a esta reorganización.
 
 **Verificación:** `npm run lint` código 0 sin avisos; `npm run build` código 0 con el mismo aviso previo C0-B02 (chunk 662,12 kB de Mermaid). Revisión visual en Edge headless a 390×844, 1024×768, 1280×720, 1440×900 y 1920×700 de los tres roles y el login con **API simulada local** (sin backend, SQL ni IA): fondo continuo al desplazar, sin desbordamiento horizontal, sin errores de consola salvo 404 esperados. Con la API simulada, ambos diálogos de importación envían `POST multipart/form-data`. Esto **no** acredita S-2 en sistema real ni ejecuta casos UI-xx; los 28 requisitos siguen no ejecutados.
+
+## Ajustes focalizados de administración (2026-11-15)
+
+**Alcance autorizado:** reemplazar los paneles laterales de alta de instituciones y asignación de suscripciones por botones que abren diálogos; buscar instituciones por nombre en las tres pestañas; ordenar ascendentemente el selector de Coordinadores. No se cambian backend, esquema, contratos, dependencias ni las pantallas de otros roles.
+
+Implementación en [SuperAdminDashboard.vue](../../../frontend/src/views/SuperAdminDashboard.vue): se reutiliza `v-dialog` con el fondo semitransparente existente y los listados pasan a ocupar el ancho disponible. Los filtros locales ignoran mayúsculas, tildes y espacios exteriores; incluyen limpieza y estado sin coincidencias. El selector usa orden español ascendente sin mutar el arreglo original; filtrar opciones no cambia la institución seleccionada ni su etiqueta. Los formularios conservan sus campos, validación y mensajes; muestran carga y bloquean envíos repetidos mientras guardan, y solo se vacían/cierran tras éxito.
+
+**Verificación realizada con API simulada local**, sin conectar ni escribir en PostgreSQL:
+
+| Comprobación | Resultado observado |
+|---|---|
+| Instituciones: buscar `PORTICO` con espacios y sin tilde | Solo Academia del Pórtico; búsqueda inexistente muestra mensaje y limpiar restaura el listado |
+| Nueva institución | Diálogo accesible por nombre; error HTTP 400 controlado conserva formulario; éxito HTTP 201 cierra, limpia y actualiza el listado |
+| Coordinadores: orden del selector | Academia del Pórtico, Ágora de Atenas, Liceo de Estagira, Universidad Zenón |
+| Coordinadores: filtrar instituciones | Filtra por nombre, informa ausencia de coincidencias y conserva la selección y su nombre aunque no coincida con el filtro |
+| Suscripciones: búsqueda por institución | Filtra sin distinguir tildes/mayúsculas, informa ausencia de resultados y el botón de limpiar restaura el listado |
+| Asignar suscripción | Error HTTP 409 controlado conserva formulario; éxito HTTP 201 cierra y actualiza la lista; opacidad final del fondo 0,32 |
+| Adaptación de los diálogos | Comprobados a 1440×1000 y 390×844; tarjetas móviles de unos 342 px dentro del viewport de 390 px, sin desbordamiento horizontal |
+
+ESLint sobre la vista modificada y `npm run build`: código 0. Persiste el aviso previo por chunk mayor de 500 kB. No se añaden suites ni se declaran completos C1–C5 o los 28 requisitos; tampoco se acredita integración HTTP/SQL real ni S-2. Los servidores auxiliares de comprobación se detienen al finalizar.

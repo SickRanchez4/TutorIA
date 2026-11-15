@@ -29,30 +29,30 @@
         </v-row>
 
         <v-row>
-          <v-col cols="12" md="4">
-            <v-expansion-panels>
-              <v-expansion-panel title="Nueva institución" value="new-inst">
-                <template #text>
-                  <v-form class="d-flex flex-column ga-3 pt-1" @submit.prevent="createInstitucion">
-                    <v-text-field v-model="newInst.nombre" label="Nombre" />
-                    <v-text-field v-model="newInst.dominio_permitido" label="Dominio permitido (ej. uni.edu)" />
-                    <v-btn type="submit" color="primary" variant="flat" block>Crear</v-btn>
-                  </v-form>
-                </template>
-              </v-expansion-panel>
-            </v-expansion-panels>
-          </v-col>
-
-          <v-col cols="12" md="8">
+          <v-col cols="12">
             <v-card class="surface-card pa-5" rounded="xl">
-              <h2 class="text-body-large font-weight-bold mb-3">Listado</h2>
+              <div class="d-flex align-center justify-space-between mb-3 ga-2 flex-wrap">
+                <h2 class="text-body-large font-weight-bold">Instituciones</h2>
+                <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="showNewInstDialog = true">
+                  Nueva institución
+                </v-btn>
+              </div>
+              <v-text-field
+                v-model="institucionSearch"
+                label="Buscar instituciones por nombre"
+                prepend-inner-icon="mdi-magnify"
+                clearable
+                hide-details
+                class="mb-3"
+              />
               <div v-if="loading" class="d-flex align-center ga-2" role="status">
                 <v-progress-circular indeterminate color="primary" size="20"></v-progress-circular>
                 <span class="text-body-medium text-subtle">Cargando...</span>
               </div>
               <p v-else-if="!instituciones.length" class="text-body-medium text-subtle mb-0">Sin instituciones.</p>
+              <p v-else-if="!filteredInstituciones.length" class="text-body-medium text-subtle mb-0" role="status">No se encontraron instituciones.</p>
               <v-list v-else density="comfortable" class="admin-list pa-0">
-                <v-list-item v-for="inst in instituciones" :key="inst.id" class="mb-1">
+                <v-list-item v-for="inst in filteredInstituciones" :key="inst.id" class="mb-1">
                   <div class="admin-row">
                     <div class="admin-row__main">
                       <div v-if="editInstId === inst.id" class="d-flex flex-column ga-2">
@@ -86,14 +86,26 @@
         <v-col cols="12" md="4">
           <v-card class="surface-card pa-5" rounded="xl">
             <h2 class="text-body-large font-weight-bold mb-3">Institución</h2>
+            <v-text-field
+              v-model="coordinadorInstitucionSearch"
+              label="Buscar instituciones por nombre"
+              prepend-inner-icon="mdi-magnify"
+              clearable
+              hide-details
+              density="compact"
+              class="mb-3"
+            />
             <v-select
               v-model="selectedInstId"
-              :items="institucionOptions"
+              :items="coordinadorInstitucionOptions"
               label="Selecciona una institución"
+              no-data-text="No se encontraron instituciones."
               density="compact"
               class="mb-2"
               @update:model-value="loadCoordinadores"
-            />
+            >
+              <template #selection>{{ institucionNombre(selectedInstId) }}</template>
+            </v-select>
             <p v-if="selectedInstId" class="text-body-small text-subtle mb-0">
               Coordinadores: {{ coordinadores.length }} / {{ coordinadoresLimit }}
             </p>
@@ -154,28 +166,26 @@
 
       <!-- Suscripciones -->
       <v-row v-else-if="tab === 'suscripciones'">
-        <v-col cols="12" md="4">
-          <v-expansion-panels>
-            <v-expansion-panel title="Asignar suscripción" value="new-sub">
-              <template #text>
-                <v-form class="d-flex flex-column ga-3 pt-1" @submit.prevent="assignSuscripcion">
-                  <v-select v-model="sub.institucion_id" :items="institucionOptions" label="Institución" />
-                  <v-select v-model="sub.plan_id" :items="planOptions" label="Plan" />
-                  <v-text-field v-model.number="sub.limite_tokens_mensual" type="number" min="0" label="Límite de tokens mensual" />
-                  <v-text-field v-model="sub.fecha_fin" type="date" label="Fecha de finalización" />
-                  <v-btn type="submit" color="primary" variant="flat" block>Asignar suscripción</v-btn>
-                </v-form>
-              </template>
-            </v-expansion-panel>
-          </v-expansion-panels>
-        </v-col>
-
-        <v-col cols="12" md="8">
+        <v-col cols="12">
           <v-card class="surface-card pa-5" rounded="xl">
-            <h2 class="text-body-large font-weight-bold mb-3">Suscripciones actuales</h2>
+            <div class="d-flex align-center justify-space-between mb-3 ga-2 flex-wrap">
+              <h2 class="text-body-large font-weight-bold">Suscripciones actuales</h2>
+              <v-btn color="primary" variant="flat" prepend-icon="mdi-plus" @click="showNewSubDialog = true">
+                Asignar suscripción
+              </v-btn>
+            </div>
+            <v-text-field
+              v-model="suscripcionSearch"
+              label="Buscar instituciones por nombre"
+              prepend-inner-icon="mdi-magnify"
+              clearable
+              hide-details
+              class="mb-3"
+            />
             <p v-if="!suscripciones.length" class="text-body-medium text-subtle mb-0">Sin suscripciones.</p>
+            <p v-else-if="!filteredSuscripciones.length" class="text-body-medium text-subtle mb-0" role="status">No se encontraron suscripciones para esa institución.</p>
             <v-list v-else density="comfortable" class="admin-list pa-0">
-              <v-list-item v-for="s in suscripciones" :key="s.id" class="mb-2">
+              <v-list-item v-for="s in filteredSuscripciones" :key="s.id" class="mb-2">
                 <div v-if="editSubId !== s.id" class="admin-row">
                   <div class="admin-row__main">
                     <p class="text-body-medium font-weight-medium mb-0">{{ institucionNombre(s.institucion_id) }}</p>
@@ -271,6 +281,46 @@
       <ProfileSection v-show="tab === 'perfil'" @notify="toast.notify" />
     </div>
 
+    <v-dialog v-model="showNewInstDialog" max-width="560" :persistent="creatingInstitucion" aria-labelledby="new-institution-title">
+      <v-card class="surface-card" rounded="xl">
+        <v-card-title class="d-flex align-center justify-space-between ga-2">
+          <span id="new-institution-title" class="text-body-large font-weight-bold">Nueva institución</span>
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Cerrar nueva institución" :disabled="creatingInstitucion" @click="showNewInstDialog = false" />
+        </v-card-title>
+        <v-card-text>
+          <v-form class="d-flex flex-column ga-3" @submit.prevent="createInstitucion">
+            <v-text-field v-model="newInst.nombre" label="Nombre" autofocus />
+            <v-text-field v-model="newInst.dominio_permitido" label="Dominio permitido (ej. uni.edu)" />
+            <div class="d-flex justify-end ga-2">
+              <v-btn variant="text" :disabled="creatingInstitucion" @click="showNewInstDialog = false">Cancelar</v-btn>
+              <v-btn type="submit" color="primary" variant="flat" :loading="creatingInstitucion">Crear institución</v-btn>
+            </div>
+          </v-form>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showNewSubDialog" max-width="560" :persistent="assigningSuscripcion" scrollable aria-labelledby="new-subscription-title">
+      <v-card class="surface-card" rounded="xl">
+        <v-card-title class="d-flex align-center justify-space-between ga-2">
+          <span id="new-subscription-title" class="text-body-large font-weight-bold">Asignar suscripción</span>
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Cerrar asignación de suscripción" :disabled="assigningSuscripcion" @click="showNewSubDialog = false" />
+        </v-card-title>
+        <v-card-text>
+          <v-form class="d-flex flex-column ga-3" @submit.prevent="assignSuscripcion">
+            <v-select v-model="sub.institucion_id" :items="institucionOptions" label="Institución" />
+            <v-select v-model="sub.plan_id" :items="planOptions" label="Plan" />
+            <v-text-field v-model.number="sub.limite_tokens_mensual" type="number" min="0" label="Límite de tokens mensual" />
+            <v-text-field v-model="sub.fecha_fin" type="date" label="Fecha de finalización" />
+            <div class="d-flex justify-end ga-2">
+              <v-btn variant="text" :disabled="assigningSuscripcion" @click="showNewSubDialog = false">Cancelar</v-btn>
+              <v-btn type="submit" color="primary" variant="flat" :loading="assigningSuscripcion">Asignar suscripción</v-btn>
+            </div>
+          </v-form>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
     <v-dialog v-model="showNewCoordDialog" max-width="560">
       <v-card class="surface-card" rounded="xl">
         <v-card-title class="d-flex align-center justify-space-between ga-2">
@@ -332,7 +382,17 @@ const planes = ref([])
 const suscripciones = ref([])
 const loading = ref(false)
 
-const institucionOptions = computed(() => instituciones.value.map((i) => ({ title: i.nombre, value: i.id })))
+const institucionSearch = ref('')
+const coordinadorInstitucionSearch = ref('')
+const suscripcionSearch = ref('')
+const normalizeSearch = (value) => (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('es')
+const matchesInstitucion = (name, query) => normalizeSearch(name).includes(normalizeSearch(query))
+const filteredInstituciones = computed(() => instituciones.value.filter((i) => matchesInstitucion(i.nombre, institucionSearch.value)))
+const filteredSuscripciones = computed(() => suscripciones.value.filter((s) => matchesInstitucion(institucionNombre(s.institucion_id), suscripcionSearch.value)))
+const institucionOptions = computed(() => instituciones.value
+  .map((i) => ({ title: i.nombre, value: i.id }))
+  .sort((a, b) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base' })))
+const coordinadorInstitucionOptions = computed(() => institucionOptions.value.filter((i) => matchesInstitucion(i.title, coordinadorInstitucionSearch.value)))
 const planOptions = computed(() => planes.value.map((p) => ({ title: p.nombre, value: p.id })))
 const institucionesActivas = computed(() => instituciones.value.filter((i) => i.is_active).length)
 const institucionNombre = (id) => instituciones.value.find((i) => i.id === id)?.nombre || '—'
@@ -378,20 +438,31 @@ async function loadAll() {
 
 /* ---------- Instituciones ---------- */
 const newInst = ref({ nombre: '', dominio_permitido: '' })
+const showNewInstDialog = ref(false)
+const creatingInstitucion = ref(false)
 const editInstId = ref('')
 const editInst = ref({ nombre: '', dominio_permitido: '' })
 
 async function createInstitucion() {
+  if (creatingInstitucion.value) return
   if (!newInst.value.nombre.trim()) return notify('El nombre es requerido', true)
-  const ok = await mutate(
-    () => superAdminService.createInstitucion({
-      nombre: newInst.value.nombre.trim(),
-      dominio_permitido: newInst.value.dominio_permitido.trim() || null,
-    }),
-    'Institución creada',
-    'Error al crear institución',
-  )
-  if (ok) newInst.value = { nombre: '', dominio_permitido: '' }
+  creatingInstitucion.value = true
+  try {
+    const ok = await mutate(
+      () => superAdminService.createInstitucion({
+        nombre: newInst.value.nombre.trim(),
+        dominio_permitido: newInst.value.dominio_permitido.trim() || null,
+      }),
+      'Institución creada',
+      'Error al crear institución',
+    )
+    if (ok) {
+      newInst.value = { nombre: '', dominio_permitido: '' }
+      showNewInstDialog.value = false
+    }
+  } finally {
+    creatingInstitucion.value = false
+  }
 }
 
 function startInstEdit(inst) {
@@ -471,23 +542,34 @@ async function removePlan(plan) {
 /* ---------- Suscripciones ---------- */
 const emptySub = () => ({ institucion_id: null, plan_id: null, limite_tokens_mensual: null, fecha_fin: '' })
 const sub = ref(emptySub())
+const showNewSubDialog = ref(false)
+const assigningSuscripcion = ref(false)
 const editSubId = ref('')
 const editSub = ref({ plan_id: null, limite_tokens_mensual: 0, is_active: true, fecha_inicio: '', fecha_fin: '' })
 
 async function assignSuscripcion() {
+  if (assigningSuscripcion.value) return
   if (!sub.value.institucion_id || !sub.value.plan_id) return notify('Selecciona institución y plan', true)
   if (isMissingNumber(sub.value.limite_tokens_mensual)) return notify('Límite de tokens mensual es requerido', true)
 
-  const ok = await mutate(
-    () => superAdminService.assignSuscripcion(sub.value.institucion_id, {
-      plan_id: Number(sub.value.plan_id),
-      limite_tokens_mensual: Number(sub.value.limite_tokens_mensual),
-      fecha_fin: sub.value.fecha_fin || null,
-    }),
-    'Suscripción asignada',
-    'Error al asignar suscripción',
-  )
-  if (ok) sub.value = emptySub()
+  assigningSuscripcion.value = true
+  try {
+    const ok = await mutate(
+      () => superAdminService.assignSuscripcion(sub.value.institucion_id, {
+        plan_id: Number(sub.value.plan_id),
+        limite_tokens_mensual: Number(sub.value.limite_tokens_mensual),
+        fecha_fin: sub.value.fecha_fin || null,
+      }),
+      'Suscripción asignada',
+      'Error al asignar suscripción',
+    )
+    if (ok) {
+      sub.value = emptySub()
+      showNewSubDialog.value = false
+    }
+  } finally {
+    assigningSuscripcion.value = false
+  }
 }
 
 function startSubEdit(s) {
