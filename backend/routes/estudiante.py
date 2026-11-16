@@ -139,12 +139,14 @@ def _parse_n8n_chat_response(data):
         resource = {}
 
     resource_title = str(resource.get('title') or '').strip()
+    resource_explanation = str(resource.get('explanation') or '').strip()
     resource_graphic = str(resource.get('graphic') or '').strip()
     if resource_graphic:
         # MermaidMessage.vue detects this fenced block and renders the diagram.
-        # Keep the title as regular message text above the diagram.
+        # Keep title and explanation as regular rich-text content above it.
         text = '\n\n'.join(part for part in (
             resource_title,
+            resource_explanation,
             f'```mermaid\n{resource_graphic}\n```',
         ) if part)
     else:
@@ -159,6 +161,8 @@ def _parse_n8n_chat_response(data):
             or nested.get('answer')
             or nested.get('output')
             or nested.get('message')
+            or data.get('error')
+            or nested.get('error')
         )
     citas = (
         data.get('citas')
@@ -198,7 +202,15 @@ def _call_n8n_chat(payload):
 
     resp = http_requests.post(webhook_url, json=payload, timeout=60)
     resp.raise_for_status()
-    return _parse_n8n_chat_response(resp.json())
+    try:
+        data = resp.json()
+    except ValueError:
+        # n8n answers 200 with an empty body when its flow ends before "Respond to Webhook".
+        raise RuntimeError(
+            f"n8n devolvió una respuesta vacía o no JSON (HTTP {resp.status_code}, {len(resp.content)} bytes) "
+            f"para el modo '{payload.get('requested_mode')}'"
+        ) from None
+    return _parse_n8n_chat_response(data)
 
 
 def _token_reservation(message):
@@ -559,7 +571,6 @@ def recurso_sintetico(sesion_id):
 
     data = request.get_json() or {}
     contenido = (data.get('contenido') or '').strip() or 'Generar recurso sintético'
-    tipo_recurso = (data.get('tipo_recurso') or 'resumen').strip()
     try:
         image = _validated_chat_image(data)
     except ValueError as exc:

@@ -246,29 +246,56 @@
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
+            "query": "={{ $('Construir Configuración del Agente').item.json.message }}",
             "namespace": "={{ $('Construir Configuración del Agente').item.json.pineconeNamespace }}",
-            "query": "={{ $('Construir Configuración del Agente').item.json.message }}"
+            "allowGeneralKnowledge": "={{ $('Construir Configuración del Agente').item.json.extendKnowledge === true }}",
+            "maxTokens": "={{ $('Construir Configuración del Agente').item.json.maxTokens }}"
           },
           "matchingColumns": [],
           "schema": [
             {
               "id": "query",
               "displayName": "query",
-              "required": false,
+              "required": true,
               "defaultMatch": false,
               "display": true,
               "canBeUsedToMatch": true,
-              "type": "string"
+              "type": "string",
+              "removed": false
             },
             {
               "id": "namespace",
               "displayName": "namespace",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "allowGeneralKnowledge",
+              "displayName": "allowGeneralKnowledge",
               "required": false,
               "defaultMatch": false,
               "display": true,
-              "type": "string"
+              "canBeUsedToMatch": false,
+              "type": "boolean",
+              "removed": false
+            },
+            {
+              "id": "maxTokens",
+              "displayName": "maxTokens",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": false,
+              "type": "number",
+              "removed": false
             }
           ],
+          "attemptToConvertTypes": true,
+          "convertFieldsToString": false,
           "options": {
             "waitForSubWorkflow": true
           }
@@ -286,7 +313,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const cfg = $('Construir Configuración del Agente').first().json;\nconst subOutput = $json;\n\nconst raw =\n  subOutput.respuesta ??\n  subOutput.answer ??\n  subOutput.output ??\n  '';\n\nconst usage = subOutput.usage ?? null;\n\nconst citations =\n  subOutput.citas ??\n  subOutput.citations ??\n  [];\n\nconst updatedHistory =\n  subOutput.updated_history ??\n  subOutput.conversation_history ??\n  null;\n\nconst hasContext =\n  subOutput.has_context ??\n  subOutput.hasContext ??\n  false;\n\nconst startTime = cfg._startTime || Date.now();\n\nconst baseResponse = {\n  success: true,\n  mode: cfg.requestedMode,\n  conversationId: cfg.conversationId,\n  studentId: cfg.studentId,\n  cursoId: cfg.cursoId,\n  answer: raw,\n  citations,\n  usage,\n  updatedHistory,\n  hasContext,\n  processingTimeMs: Date.now() - startTime,\n  timestamp: new Date().toISOString()\n};\n\n\n// =====================================================\n// MODO RECURSOS\n// =====================================================\n\nif (cfg.requestedMode === 'recursos') {\n\n  let resource = null;\n  let parseError = false;\n\n  // ---------------------------------------------------\n  // CASO 1:\n  // El workflow generador ya devolvió la estructura\n  // ---------------------------------------------------\n\n  if (\n    subOutput.graphic !== undefined ||\n    subOutput.mermaid_code !== undefined\n  ) {\n\n    const graphic =\n      subOutput.graphic ??\n      subOutput.mermaid_code ??\n      null;\n\n    const diagramType =\n      subOutput.diagramType ??\n      subOutput.mermaid_type ??\n      'unknown';\n\n    const title =\n      subOutput.title ??\n      'Recurso visual';\n\n    if (graphic) {\n      resource = {\n        graphic,\n        diagramType,\n        title\n      };\n    }\n\n  }\n\n  // ---------------------------------------------------\n  // CASO 2:\n  // El agente devolvió JSON dentro de output/answer\n  // ---------------------------------------------------\n\n  else {\n\n    try {\n\n      let parsed = raw;\n\n      if (typeof raw === 'string') {\n\n        // Intento directo\n        try {\n          parsed = JSON.parse(raw);\n        } catch {\n\n          // Buscar JSON embebido\n          const match = raw.match(/\\{[\\s\\S]*\\}/);\n\n          if (match) {\n            parsed = JSON.parse(match[0]);\n          } else {\n            throw new Error('No se encontró JSON');\n          }\n        }\n      }\n\n      if (\n        parsed &&\n        typeof parsed === 'object'\n      ) {\n\n        const graphic =\n          parsed.graphic ??\n          parsed.mermaidCode ??\n          parsed.mermaid_code ??\n          null;\n\n        const diagramType =\n          parsed.diagramType ??\n          parsed.mermaidType ??\n          parsed.mermaid_type ??\n          'unknown';\n\n        const title =\n          parsed.title ??\n          'Recurso visual';\n\n        if (graphic) {\n\n          resource = {\n            graphic,\n            diagramType,\n            title\n          };\n\n        } else {\n          parseError = true;\n        }\n\n      } else {\n        parseError = true;\n      }\n\n    } catch (error) {\n      parseError = true;\n    }\n  }\n\n\n  // ===================================================\n  // RESPUESTA FINAL PARA RECURSOS\n  // ===================================================\n\n  const result = {\n    ...baseResponse,\n    resource\n  };\n\n  if (!resource || parseError) {\n\n    result.success = false;\n\n    result.error =\n      'No se pudo generar el recurso en el formato esperado.';\n\n    // Conservamos la respuesta original solamente\n    // para debugging / fallback.\n    result.answer = raw;\n  }\n\n  return [\n    {\n      json: result\n    }\n  ];\n}\n\n\n// =====================================================\n// CHAT / PRACTICAR\n// =====================================================\n\nreturn [\n  {\n    json: baseResponse\n  }\n];"
+        "jsCode": "const cfg = $('Construir Configuración del Agente').first().json;\nconst subOutput = $json || {};\nconst citations = subOutput.citations ?? subOutput.citas ?? [];\nconst hasContext = subOutput.hasContext ?? subOutput.has_context ?? false;\nconst startTime = cfg._startTime || Date.now();\nconst baseResponse = {\n  success: true,\n  mode: cfg.requestedMode,\n  modo_aplicado: cfg.requestedMode,\n  conversationId: cfg.conversationId,\n  studentId: cfg.studentId,\n  cursoId: cfg.cursoId,\n  citations,\n  usage: subOutput.usage ?? null,\n  updatedHistory: subOutput.updated_history ?? subOutput.conversation_history ?? null,\n  hasContext,\n  processingTimeMs: Date.now() - startTime,\n  timestamp: new Date().toISOString()\n};\n\nif (cfg.requestedMode === 'recursos') {\n  if (subOutput.success === false) {\n    return [{ json: {\n      ...baseResponse,\n      success: false,\n      answer: String(subOutput.error || 'No se pudo generar el recurso con el material disponible.'),\n      resource: null,\n      usage: null\n    } }];\n  }\n\n  const graphic = String(subOutput.graphic ?? subOutput.mermaid_code ?? '').trim();\n  if (!graphic) {\n    return [{ json: {\n      ...baseResponse,\n      success: false,\n      answer: 'El generador no devolvió un diagrama válido. Intenta describir de nuevo el tema o el tipo de diagrama.',\n      resource: null,\n      usage: null\n    } }];\n  }\n\n  return [{ json: {\n    ...baseResponse,\n    resource: {\n      graphic,\n      diagramType: subOutput.diagramType ?? subOutput.mermaid_type ?? 'unknown',\n      title: subOutput.title ?? 'Recurso académico',\n      explanation: subOutput.explanation ?? ''\n    },\n    answer: ''\n  } }];\n}\n\nconst answer =\n  subOutput.respuesta ??\n  subOutput.answer ??\n  subOutput.output ??\n  subOutput.message ??\n  '';\n\nreturn [{ json: { ...baseResponse, answer } }];"
       },
       "id": "198c5a28-3f74-4696-9da8-0f22849d5613",
       "name": "Formatear Respuesta",
@@ -446,7 +473,7 @@
       "credentials": {
         "openAiApi": {
           "id": "0MN9wHLA5mug4Twt",
-          "name": "OpenAi account Temporal"
+          "name": "wpp"
         }
       }
     },

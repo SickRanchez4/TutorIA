@@ -36,6 +36,7 @@
           <v-progress-circular indeterminate color="primary" size="34" width="4"></v-progress-circular>
           <p class="text-body-small mb-0">Cargando conversaciones...</p>
         </div>
+        <RegionState v-else-if="sessionsError" :error="sessionsError" @retry="loadSesiones" />
         <div v-else-if="!sesiones.length" class="empty-state mx-2 mb-2">
           <v-icon icon="mdi-forum-outline" size="31" color="primary"></v-icon>
           <p class="text-body-medium font-weight-bold mb-0">Tu primera conversación empieza aquí</p>
@@ -62,7 +63,7 @@
               </div>
               <v-list-item-title class="text-body-medium font-weight-bold flex-grow-1 text-truncate">{{ s.titulo }}</v-list-item-title>
               <v-btn icon="mdi-pencil-outline" variant="text" size="x-small" :aria-label="`Renombrar ${s.titulo}`" @click.stop="startRename(s)"></v-btn>
-              <v-btn icon="mdi-delete-outline" variant="text" size="x-small" color="error" :aria-label="`Eliminar ${s.titulo}`" @click.stop="deleteSesion(s)"></v-btn>
+              <v-btn icon="mdi-archive-outline" variant="text" size="x-small" color="error" :aria-label="`Archivar ${s.titulo}`" @click.stop="deleteSesion(s)"></v-btn>
             </div>
           </v-list-item>
         </v-list>
@@ -98,25 +99,28 @@
             </div>
           </div>
 
-          <div ref="messagesBox" class="chat-messages flex-grow-1 pa-3 pa-md-4" aria-live="polite">
+          <div ref="messagesBox" class="chat-messages flex-grow-1 pa-3 pa-md-4" role="log" aria-label="Mensajes de la conversación" aria-live="polite" tabindex="0" @scroll="updateScroll">
             <div v-if="loadingSesion" class="d-flex flex-column align-center justify-center ga-3 text-subtle chat-messages__loading" role="status">
               <v-progress-circular indeterminate color="primary" size="40" width="4"></v-progress-circular>
               <p class="text-body-small mb-0">Cargando conversación...</p>
             </div>
+            <RegionState v-else-if="messagesError" :error="messagesError" @retry="openSesion(activeSesion)" />
             <template v-else>
               <div v-if="!mensajes.length" class="chat-messages__empty text-center py-10">
                 <div class="icon-tile mx-auto mb-3" aria-hidden="true"><v-icon icon="mdi-lightbulb-on-outline" size="27"></v-icon></div>
                 <p class="font-weight-black mb-1">¿Qué quieres entender hoy?</p>
                 <p class="text-body-small text-subtle mb-0">Escribe una pregunta, plantea un ejercicio o genera un recurso para estudiar.</p>
               </div>
+              <v-btn v-if="!nearBottom" variant="tonal" size="small" @click="scrollBottom(true)">Ir al último mensaje</v-btn>
               <div v-for="m in mensajes" :key="m.id" :class="['d-flex flex-column mb-4', m.rol === 'user' ? 'align-end' : 'align-start']">
-                <span v-if="m.tipo_interaccion" class="chat-mode-tag mb-1">
-                  <v-icon :icon="modeMeta(m.tipo_interaccion).icon" size="11" class="mr-1"></v-icon>{{ modeMeta(m.tipo_interaccion).label }}
+                <span class="chat-mode-tag mb-1">
+                  {{ m.rol === 'user' ? 'Tú' : 'TutorIA' }}
+                  <template v-if="m.tipo_interaccion"> · <v-icon :icon="modeMeta(m.tipo_interaccion).icon" size="11" class="mr-1"></v-icon>{{ modeMeta(m.tipo_interaccion).label }}</template>
                 </span>
                 <div :class="['chat-message', { 'chat-message--user': m.rol === 'user', 'chat-message--resource': isResource(m) }]">
                   <div v-if="m.rol !== 'user'" class="chat-assistant-avatar" aria-hidden="true"><v-icon icon="mdi-brain" size="15"></v-icon></div>
                   <div :class="['chat-bubble text-body-medium', m.rol === 'user' ? 'chat-bubble--user' : 'chat-bubble--assistant', { 'chat-bubble--resource': isResource(m) }]">
-                    <MermaidMessage v-if="isResource(m)" :content="m.contenido" />
+                    <MermaidMessage v-if="m.rol !== 'user'" :content="m.contenido" :active="active" />
                     <template v-else>{{ m.contenido }}</template>
                     <div v-if="m.rol === 'user' && m.image_name" class="chat-image-resource" :title="`Imagen: ${m.image_name}`">
                       <v-icon icon="mdi-image-outline" size="16"></v-icon>
@@ -150,9 +154,27 @@
               >
                 {{ opt.label }}
               </v-btn>
+              <v-menu v-if="selectedMode === 'recurso_sintetico' && isModeEnabled('recurso_sintetico')" location="top">
+                <template #activator="{ props: menuProps }">
+                  <v-btn v-bind="menuProps" size="small" variant="text" prepend-icon="mdi-format-list-bulleted">
+                    Tipos disponibles
+                  </v-btn>
+                </template>
+                <v-card max-width="360" max-height="420" rounded="lg">
+                  <v-card-title class="text-subtitle-1">Catálogo de recursos compatibles</v-card-title>
+                  <v-list density="compact" max-height="340" class="overflow-y-auto">
+                    <v-list-item
+                      v-for="item in MERMAID_DIAGRAM_CATALOG"
+                      :key="item.type"
+                      :title="item.label"
+                      :subtitle="item.type"
+                    ></v-list-item>
+                  </v-list>
+                </v-card>
+              </v-menu>
             </div>
             <div class="chat-input">
-              <input ref="imageInput" class="d-none" type="file" accept="image/png,image/jpeg" @change="selectImage" />
+              <input ref="imageInput" class="d-none" type="file" accept="image/png,image/jpeg,image/webp,image/gif" @change="selectImage" />
               <v-textarea
                 v-model="inputMsg"
                 rows="1"
@@ -163,8 +185,8 @@
                 variant="solo"
                 flat
                 class="chat-input__field"
-                :disabled="loadingSesion"
-                @keydown.enter.exact.prevent="send"
+                :disabled="loadingSesion || sending || !!messagesError"
+                @keydown="composerKeydown"
               />
               <div class="chat-input__actions">
                 <v-btn
@@ -200,7 +222,7 @@
                   color="primary"
                   variant="flat"
                   :loading="sending"
-                  :disabled="!selectedMode || loadingSesion || isRecording"
+                  :disabled="!selectedMode || loadingSesion || isRecording || !!messagesError"
                   aria-label="Enviar mensaje"
                   @click="send"
                 >
@@ -224,31 +246,41 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { estudianteService } from '../../services'
 import { errorMessage } from '../../composables/useToast'
 import MermaidMessage from '../../components/MermaidMessage.vue'
+import { MERMAID_DIAGRAM_CATALOG } from '../../utils/mermaidCatalog'
 import SynapseBackdrop from '../../components/SynapseBackdrop.vue'
+import RegionState from '../../components/RegionState.vue'
+import { useUnsavedChanges } from '../../composables/useUnsavedChanges'
+import { confirmAction } from '../../composables/useConfirm'
+import { useAuthStore } from '../../stores/auth'
 
 const props = defineProps({
   grupos: { type: Array, default: () => [] },
   loadingGrupos: { type: Boolean, default: false },
+  active: { type: Boolean, default: true },
 })
 const emit = defineEmits(['notify'])
 const { xs } = useDisplay()
 
-const notify = (message, isError = false) => emit('notify', message, isError)
+const auth = useAuthStore()
+const token = auth.token
+let alive = true
+const currentSession = () => alive && auth.token === token
+const notify = (message, isError = false) => { if (currentSession()) emit('notify', message, isError) }
 const fail = (e, fallback) => notify(errorMessage(e, fallback), true)
 
 const CHAT_MODES = [
-  { value: 'consulta', label: 'Chat' },
+  { value: 'consulta', label: 'Consulta' },
   { value: 'practicar', label: 'Práctica' },
-  { value: 'recurso_sintetico', label: 'Recurso sintético' },
+  { value: 'recurso_sintetico', label: 'Recursos' },
 ]
 
 const MODE_META = {
-  consulta: { label: 'Chat', icon: 'mdi-chat-outline' },
+  consulta: { label: 'Consulta', icon: 'mdi-chat-outline' },
   practicar: { label: 'Práctica', icon: 'mdi-head-question-outline' },
   recurso_sintetico: { label: 'Recurso', icon: 'mdi-file-document-outline' },
 }
@@ -291,7 +323,13 @@ const renamingSesionId = ref(null)
 const renamingTitle = ref('')
 const imageInput = ref(null)
 const imageAttachment = ref(null)
+const sessionsError = ref('')
+const messagesError = ref('')
+const nearBottom = ref(true)
+const renaming = ref(false)
+const archiving = ref(false)
 let openRequest = 0
+let imageRequest = 0
 
 const grupoLabel = (g) => `${g.nombre || 'Materia'}${g.codigo ? ` (${g.codigo})` : ''}`
 const grupoOptions = computed(() => props.grupos.map((g) => ({ title: grupoLabel(g), value: g.id })))
@@ -311,18 +349,46 @@ function isModeEnabled(mode) {
   return enabled.includes(MODE_PERMISSION[mode])
 }
 
-async function scrollBottom() {
-  await nextTick()
-  if (messagesBox.value) messagesBox.value.scrollTop = messagesBox.value.scrollHeight
+function updateScroll() {
+  const box = messagesBox.value
+  if (box) nearBottom.value = box.scrollHeight - box.clientHeight - box.scrollTop < 64
 }
+async function scrollBottom(force = false) {
+  await nextTick()
+  if (messagesBox.value && (force || nearBottom.value)) {
+    messagesBox.value.scrollTop = messagesBox.value.scrollHeight
+    nearBottom.value = true
+  }
+}
+function composerKeydown(event) {
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  send()
+}
+function discardDraft() {
+  inputMsg.value = ''
+  clearImage()
+  stopVoice()
+}
+async function canChangeConversation() {
+  if (sending.value || creating.value) { notify('Espera a que termine la operación en curso.', true); return false }
+  if (!inputMsg.value && !imageAttachment.value && !isRecording.value) return true
+  if (!await confirmAction({ title: 'Borrador sin enviar', message: '¿Descartar el texto y la imagen antes de cambiar de conversación?', confirmText: 'Descartar borrador' })) return false
+  discardDraft()
+  return true
+}
+useUnsavedChanges(() => Boolean(inputMsg.value || imageAttachment.value || isRecording.value), discardDraft, () => sending.value || creating.value)
 
 /* ---------- Sesiones ---------- */
 async function loadSesiones() {
   loadingSesiones.value = true
+  sessionsError.value = ''
   try {
     const r = await estudianteService.listSesiones()
+    if (!currentSession()) return
     sesiones.value = r.sesiones || []
   } catch (e) {
+    sessionsError.value = errorMessage(e, 'No se pudieron cargar tus conversaciones')
     fail(e, 'No se pudieron cargar tus conversaciones')
   } finally {
     loadingSesiones.value = false
@@ -330,12 +396,16 @@ async function loadSesiones() {
 }
 
 async function createSesion() {
+  if (creating.value) return
   if (!newSesionGrupo.value) return notify('Selecciona una materia', true)
+  if (!await canChangeConversation()) return
   creating.value = true
   try {
     const r = await estudianteService.createSesion({ curso_id: newSesionGrupo.value })
+    if (!currentSession()) return
     sesiones.value.unshift(r.sesion)
     newSesionGrupo.value = null
+    creating.value = false
     await openSesion(r.sesion)
   } catch (e) {
     fail(e, 'No se pudo crear la conversación')
@@ -355,57 +425,71 @@ function cancelRename() {
 }
 
 async function confirmRename(sesionId) {
+  if (renaming.value) return
   const title = renamingTitle.value.trim()
   if (!title) return notify('El título no puede estar vacío', true)
+  renaming.value = true
   try {
     const r = await estudianteService.updateSesion(sesionId, { titulo: title })
+    if (!currentSession()) return
     sesiones.value = sesiones.value.map((x) => (x.id === sesionId ? r.sesion : x))
     if (activeSesion.value?.id === sesionId) activeSesion.value = r.sesion
     cancelRename()
     notify('Título actualizado')
   } catch (e) {
     fail(e, 'No se pudo actualizar el título')
+  } finally {
+    renaming.value = false
   }
 }
 
 async function deleteSesion(sesion) {
-  if (!window.confirm('¿Eliminar esta conversación?')) return
+  if (archiving.value || sending.value) return
+  if (activeSesion.value?.id === sesion.id && !await canChangeConversation()) return
+  if (!await confirmAction({ title: 'Archivar conversación', message: 'Se retirará de tu listado de conversaciones activas. No se elimina físicamente su historial.', confirmText: 'Archivar', destructive: true })) return
+  archiving.value = true
   try {
     await estudianteService.deleteSesion(sesion.id)
+    if (!currentSession()) return
     sesiones.value = sesiones.value.filter((x) => x.id !== sesion.id)
     if (activeSesion.value?.id === sesion.id) {
       activeSesion.value = null
       mensajes.value = []
       sessionContext.value = null
     }
-    notify('Conversación eliminada')
+    notify('Conversación archivada')
   } catch (e) {
     fail(e, 'No se pudo eliminar la conversación')
+  } finally {
+    archiving.value = false
   }
 }
 
 async function openSesion(sesion) {
+  if (activeSesion.value?.id !== sesion.id && !await canChangeConversation()) return
+  stopVoice()
   const request = ++openRequest
   activeSesion.value = sesion
   selectedMode.value = null
   mensajes.value = []
   sessionContext.value = null
   loadingSesion.value = true
+  messagesError.value = ''
   try {
     const [r, ctx] = await Promise.all([
       estudianteService.getMensajes(sesion.id),
       estudianteService.getSesionContexto(sesion.id),
     ])
-    if (request !== openRequest) return
+    if (request !== openRequest || !currentSession()) return
     mensajes.value = r.mensajes || []
     sessionContext.value = ctx.contexto || null
     selectedMode.value = CHAT_MODES.find((opt) => isModeEnabled(opt.value))?.value || null
   } catch (e) {
-    if (request === openRequest) fail(e, 'No se pudieron cargar los mensajes')
+    if (request === openRequest) { messagesError.value = errorMessage(e, 'No se pudieron cargar los mensajes'); fail(e, messagesError.value) }
   } finally {
     if (request === openRequest) loadingSesion.value = false
   }
-  await scrollBottom()
+  if (request === openRequest) await scrollBottom(true)
 }
 
 /* ---------- Envío (CU-08 chat, CU-10 recurso, CU-11 práctica) ---------- */
@@ -427,20 +511,21 @@ async function send() {
   const imageName = image?.name || null
   const tempId = `tmp-${Date.now()}`
   mensajes.value.push({ id: tempId, rol: 'user', contenido, tipo_interaccion: mode, image_name: imageName })
-  inputMsg.value = ''
-  clearImage()
   sending.value = true
   await scrollBottom()
 
   try {
     const r = await strategy.request(sesionId, contenido, image)
-    if (activeSesion.value?.id !== sesionId) return
+    if (activeSesion.value?.id !== sesionId || !currentSession()) return
     const idx = mensajes.value.findIndex((x) => x.id === tempId)
     if (idx >= 0 && r.mensaje_usuario) mensajes.value[idx] = { ...r.mensaje_usuario, image_name: imageName }
     const reply = r.mensaje_asistente || r.recurso
     if (reply) mensajes.value.push(reply)
+    inputMsg.value = ''
+    clearImage()
     await scrollBottom()
   } catch (e) {
+    mensajes.value = mensajes.value.filter(message => message.id !== tempId)
     fail(e, strategy.error)
   } finally {
     sending.value = false
@@ -448,10 +533,11 @@ async function send() {
 }
 
 /* ---------- Imagen adjunta ---------- */
-const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg']
+const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024
 
 function clearImage() {
+  imageRequest++
   imageAttachment.value = null
   if (imageInput.value) imageInput.value.value = ''
 }
@@ -461,10 +547,12 @@ function selectImage(event) {
   if (!file) return
   if (!ALLOWED_IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_BYTES) {
     clearImage()
-    return notify('Adjunta una imagen PNG o JPG de hasta 4 MB.', true)
+    return notify('Adjunta una imagen PNG, JPG, WEBP o GIF de hasta 4 MiB.', true)
   }
+  const request = ++imageRequest
   const reader = new FileReader()
   reader.onload = () => {
+    if (request !== imageRequest || !currentSession()) return
     imageAttachment.value = { name: file.name, mime_type: file.type, data_url: reader.result }
   }
   reader.onerror = () => notify('No se pudo leer la imagen adjunta.', true)
@@ -488,6 +576,7 @@ function initSpeechRecognition() {
   speechRecognition.interimResults = true
 
   speechRecognition.onresult = (event) => {
+    if (!isRecording.value || !props.active || !currentSession()) return
     let finalTranscript = ''
     let interimTranscript = ''
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -526,13 +615,27 @@ function toggleVoiceInput() {
   }
 }
 
+function stopVoice() {
+  if (isRecording.value) speechRecognition?.abort()
+  isRecording.value = false
+}
+watch(() => props.active, active => { if (!active) stopVoice() })
+
 onMounted(() => {
   loadSesiones()
   initSpeechRecognition()
 })
 
 onBeforeUnmount(() => {
-  if (speechRecognition && isRecording.value) speechRecognition.abort()
+  alive = false
+  openRequest++
+  imageRequest++
+  stopVoice()
+  if (speechRecognition) {
+    speechRecognition.onresult = null
+    speechRecognition.onerror = null
+    speechRecognition.onend = null
+  }
   speechRecognition = null
 })
 </script>
@@ -586,7 +689,8 @@ onBeforeUnmount(() => {
 }
 
 .chat-session.v-list-item--active {
-  border-color: rgba(var(--tutoria-green-rgb), 0.3);
+  border-color: var(--tutoria-border);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .chat-session__avatar,
@@ -595,9 +699,9 @@ onBeforeUnmount(() => {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.24);
+  border: 1px solid var(--tutoria-border);
   color: var(--tutoria-green-bright);
-  background: rgba(var(--tutoria-green-rgb), 0.12);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .chat-session__avatar {
@@ -629,7 +733,7 @@ onBeforeUnmount(() => {
   position: relative;
   overflow: hidden;
   min-height: 440px;
-  background: radial-gradient(circle at 50% 43%, rgba(var(--tutoria-green-rgb), 0.13), transparent 29%);
+  background: var(--tutoria-surface);
 }
 
 .chat-welcome::before,
@@ -637,7 +741,7 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 50%;
   left: 50%;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.12);
+  border: 1px solid var(--tutoria-border);
   border-radius: 50%;
   content: '';
   transform: translate(-50%, -50%);
@@ -657,7 +761,7 @@ onBeforeUnmount(() => {
   position: relative;
   width: 112px;
   height: 112px;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.26);
+  border: 1px solid var(--tutoria-border);
   border-radius: 50%;
   animation: chat-orbit-spin 16s linear infinite;
 }
@@ -665,7 +769,7 @@ onBeforeUnmount(() => {
 .chat-orbit::before {
   position: absolute;
   inset: 14px;
-  border: 1px dashed rgba(var(--tutoria-green-rgb), 0.24);
+  border: 1px dashed var(--tutoria-border);
   border-radius: 50%;
   content: '';
 }
@@ -675,11 +779,11 @@ onBeforeUnmount(() => {
   inset: 27px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(155, 230, 146, 0.45);
+  border: 1px solid var(--tutoria-border);
   border-radius: 50%;
   color: var(--tutoria-green-bright);
-  background: linear-gradient(145deg, rgba(var(--tutoria-green-rgb), 0.28), rgba(var(--tutoria-green-rgb), 0.1));
-  box-shadow: 0 0 28px rgba(var(--tutoria-green-rgb), 0.33);
+  background: var(--tutoria-nav-active-bg);
+  box-shadow: var(--tutoria-shadow);
   animation: chat-orbit-spin 16s linear infinite reverse;
 }
 
@@ -689,7 +793,7 @@ onBeforeUnmount(() => {
   height: 8px;
   border-radius: 50%;
   background: var(--tutoria-green-bright);
-  box-shadow: 0 0 12px var(--tutoria-green-bright);
+  box-shadow: 0 0 12px rgba(var(--tutoria-green-rgb), 0.06);
 }
 
 .chat-orbit__dot--one { top: 7px; left: 31px; }
@@ -699,8 +803,8 @@ onBeforeUnmount(() => {
 /* ---------- Conversación ---------- */
 .chat-header {
   flex: 0 0 auto;
-  border-bottom: 1px solid rgba(var(--tutoria-green-rgb), 0.16);
-  background: linear-gradient(90deg, rgba(var(--tutoria-green-rgb), 0.1), rgba(var(--tutoria-green-rgb), 0.015));
+  border-bottom: 1px solid var(--tutoria-border);
+  background: var(--tutoria-surface);
 }
 
 .chat-messages {
@@ -723,14 +827,14 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px 2px 6px;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.16);
+  border: 1px solid var(--tutoria-border);
   border-radius: 999px;
-  color: rgba(184, 237, 177, 0.86);
+  color: var(--tutoria-text-muted);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
   line-height: 1.4;
-  background: rgba(var(--tutoria-green-rgb), 0.1);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .chat-message {
@@ -756,20 +860,21 @@ onBeforeUnmount(() => {
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 8px 18px rgba(37, 35, 27, 0.16);
 }
 
 .chat-bubble--user {
   border-bottom-right-radius: 4px;
-  color: #10200f;
-  background: linear-gradient(135deg, #8bd584, #6bb566);
+  color: rgb(var(--v-theme-on-primary));
+  background: var(--tutoria-green);
 }
 
 .chat-bubble--assistant {
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.16);
+  border: 1px solid var(--tutoria-border);
   border-bottom-left-radius: 4px;
   color: var(--tutoria-text);
-  background: rgba(255, 255, 255, 0.075);
+  background: var(--tutoria-nav-active-bg);
+  white-space: normal;
 }
 
 .chat-bubble--resource {
@@ -790,11 +895,11 @@ onBeforeUnmount(() => {
   max-width: 100%;
   margin-top: 9px;
   padding: 6px 8px;
-  border: 1px solid rgba(16, 32, 15, 0.2);
+  border: 1px solid var(--tutoria-border);
   border-radius: 8px;
   font-size: 0.72rem;
   line-height: 1.25;
-  background: rgba(255, 255, 255, 0.24);
+  background: rgba(37, 35, 27, 0.08);
 }
 
 .chat-thinking {
@@ -807,9 +912,9 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 4px;
   padding: 10px 12px;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.17);
+  border: 1px solid var(--tutoria-border);
   border-radius: 14px 14px 14px 4px;
-  background: rgba(var(--tutoria-green-rgb), 0.08);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .chat-thinking__bubble span {
@@ -826,8 +931,8 @@ onBeforeUnmount(() => {
 /* ---------- Composer ---------- */
 .chat-composer {
   flex: 0 0 auto;
-  border-top: 1px solid rgba(var(--tutoria-green-rgb), 0.16);
-  background: rgba(30, 35, 40, 0.92);
+  border-top: 1px solid var(--tutoria-border);
+  background: var(--tutoria-surface);
 }
 
 .chat-composer__label {
@@ -846,9 +951,9 @@ onBeforeUnmount(() => {
   align-items: flex-end;
   gap: 8px;
   padding: 6px 8px 6px 4px;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.22);
+  border: 1px solid var(--tutoria-border);
   border-radius: 14px;
-  background: rgba(17, 21, 25, 0.35);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .chat-input:focus-within {
@@ -878,7 +983,7 @@ onBeforeUnmount(() => {
 }
 
 .chat-input__tool--recording {
-  color: #fff;
+  color: var(--tutoria-text);
   animation: chat-recording-pulse 1.25s ease-in-out infinite;
 }
 
@@ -888,11 +993,11 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   padding: 5px 7px;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.24);
+  border: 1px solid var(--tutoria-border);
   border-radius: 10px;
   color: var(--tutoria-text-muted);
   font-size: 0.72rem;
-  background: rgba(var(--tutoria-green-rgb), 0.08);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .chat-image-preview img {
