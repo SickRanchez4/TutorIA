@@ -1,5 +1,6 @@
 <template>
   <v-app class="role-layout">
+    <a class="skip-link" href="#main-content">Saltar al contenido principal</a>
     <AppBackdrop />
 
     <RoleSidebar
@@ -10,34 +11,33 @@
       :items="items"
       :active="active"
       permanent-on-desktop
-      @select="emit('select', $event)"
+      @select="selectSection"
       @logout="logout"
     />
 
-    <v-app-bar elevation="0" height="64" class="role-layout__bar">
-      <v-app-bar-nav-icon v-if="!mdAndUp" aria-label="Abrir navegación" @click="drawer = true"></v-app-bar-nav-icon>
-      <div class="role-layout__title">
-        <div v-if="!mdAndUp" class="role-layout__mark" aria-hidden="true">
-          <v-icon :icon="icon" size="19"></v-icon>
-        </div>
-        <PanelTitle :role="role" :subtitle="sectionLabel" />
-      </div>
-      <v-chip variant="tonal" color="primary" class="role-layout__user mr-3" prepend-icon="mdi-account-circle-outline">
-        {{ authStore.displayName }}
-      </v-chip>
-    </v-app-bar>
-
     <v-snackbar
-      :model-value="!!toast.state.message"
+      :model-value="!!toast.state.message && (mdAndUp || !drawer)"
       :color="toast.state.isError ? 'error' : 'success'"
       location="top right"
       :timeout="-1"
       @update:model-value="(open) => open || toast.clear()"
     >
       {{ toast.state.message }}
+      <template #actions>
+        <v-btn variant="text" aria-label="Descartar aviso" @click="toast.clear()">Cerrar</v-btn>
+      </template>
     </v-snackbar>
 
-    <v-main :class="['role-layout__main', { 'role-layout__main--fill': fill }]">
+    <v-main id="main-content" tabindex="-1" :inert="drawer && !mdAndUp" :class="['role-layout__main', { 'role-layout__main--fill': fill }]">
+      <v-btn
+        v-if="!mdAndUp"
+        icon="mdi-menu"
+        size="small"
+        color="primary"
+        class="role-layout__menu"
+        aria-label="Abrir navegación"
+        @click="drawer = true"
+      />
       <div v-if="fill" class="role-layout__fill">
         <slot />
       </div>
@@ -49,16 +49,16 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import { useAuthStore } from '../stores/auth'
 import AppBackdrop from './AppBackdrop.vue'
 import RoleSidebar from './RoleSidebar.vue'
-import PanelTitle from './PanelTitle.vue'
+import { confirmNavigation } from '../composables/useUnsavedChanges'
 
 /**
- * Dashboard chrome shared by every role: backdrop, navigation, top bar,
+ * Dashboard chrome shared by every role: backdrop, navigation,
  * toast and main area. Items use `value` (in-page sections, reported through
  * `select`) or `to` (router links).
  */
@@ -79,12 +79,19 @@ const route = useRoute()
 const { mdAndUp } = useDisplay()
 const drawer = ref(mdAndUp.value)
 
-const sectionLabel = computed(() => {
-  const item = props.items.find((i) => (i.to ? route.path.startsWith(i.to) : i.value === props.active))
-  return item?.label || ''
-})
+async function selectSection(value) {
+  if (value !== props.active && await confirmNavigation()) emit('select', value)
+}
 
-function logout() {
+watch([() => route.path, () => props.active], async () => {
+  const current = props.items.find(item => item.to ? route.path.startsWith(item.to) : item.value === props.active)
+  document.title = `${current?.label || props.role} · TutorIA`
+  await nextTick()
+  document.getElementById('main-content')?.focus({ preventScroll: true })
+}, { immediate: true, flush: 'post' })
+
+async function logout() {
+  if (!await confirmNavigation()) return
   authStore.logout()
   router.push('/login')
 }
@@ -95,42 +102,8 @@ function logout() {
   background: transparent !important;
 }
 
-.role-layout__bar {
-  border-bottom: 1px solid rgba(var(--tutoria-green-rgb), 0.16) !important;
-  background: rgba(22, 26, 30, 0.82) !important;
-  backdrop-filter: blur(14px) saturate(1.1);
-}
-
-.role-layout__title {
-  display: flex;
-  flex: 1 1 0;
-  min-width: 0;
-  align-items: center;
-  gap: 12px;
-  margin-inline: 16px 8px;
-}
-
-.role-layout__mark {
-  display: grid;
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  place-items: center;
-  border: 1px solid rgba(155, 226, 153, 0.42);
-  border-radius: 11px;
-  color: #b6f2aa;
-  background: linear-gradient(145deg, rgba(var(--tutoria-green-rgb), 0.22), rgba(var(--tutoria-green-rgb), 0.05));
-}
-
-.role-layout__user {
-  max-width: min(260px, 32vw);
-  font-weight: 700;
-}
-
-.role-layout__user :deep(.v-chip__content) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.role-layout__menu {
+  margin: 12px 16px 0;
 }
 
 .role-layout__main {
@@ -159,10 +132,6 @@ function logout() {
 }
 
 @media (max-width: 839px) {
-  .role-layout__title {
-    margin-inline: 4px;
-  }
-
   .role-layout__container {
     padding: 16px;
   }
@@ -177,18 +146,8 @@ function logout() {
     padding: 8px;
   }
 
-  .role-layout__user {
-    width: 34px;
-    min-width: 34px;
-    padding-inline: 0 !important;
-  }
-
-  .role-layout__user :deep(.v-chip__content) {
-    display: none;
-  }
-
-  .role-layout__user :deep(.v-chip__prepend) {
-    margin-inline: auto;
+  .role-layout__menu {
+    margin-inline: 12px;
   }
 }
 </style>

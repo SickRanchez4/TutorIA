@@ -12,12 +12,13 @@
       </template>
     </PageHeader>
 
+    <ImportSummary :result="importResult" />
     <v-row>
       <v-col cols="12" sm="6">
-        <StatCard label="Cursos activos y en borrador" :value="cursos.length" icon="mdi-book-open-variant" />
+        <StatCard label="Cursos activos y en borrador" :value="loading ? '—' : cursos.length" icon="mdi-book-open-variant" />
       </v-col>
       <v-col cols="12" sm="6">
-        <StatCard label="Alumnos inscritos" :value="totalAlumnos" icon="mdi-account-multiple" />
+        <StatCard label="Alumnos inscritos" :value="loading ? '—' : totalAlumnos" icon="mdi-account-multiple" />
       </v-col>
     </v-row>
 
@@ -26,24 +27,39 @@
         <v-icon icon="mdi-book-multiple" color="primary"></v-icon>
         <h2 class="text-title-large font-weight-bold">Cursos disponibles</h2>
         <v-spacer></v-spacer>
-        <v-chip v-if="cursos.length" color="primary" variant="tonal" size="small">{{ cursos.length }}</v-chip>
+        <v-chip v-if="cursos.length" color="primary" variant="tonal" size="small">{{ filteredCursos.length }} / {{ cursos.length }}</v-chip>
       </v-card-title>
       <v-divider></v-divider>
       <v-card-text class="pt-5">
+        <v-text-field
+          v-model="search"
+          label="Buscar cursos por nombre"
+          prepend-inner-icon="mdi-magnify"
+          density="compact"
+          clearable
+          class="mb-5"
+          hide-details
+        />
         <v-row v-if="loading" role="status" aria-label="Cargando cursos">
           <v-col v-for="n in 3" :key="n" cols="12" sm="6" lg="4">
             <v-skeleton-loader type="article, actions" class="course-skeleton" />
           </v-col>
         </v-row>
 
+        <RegionState v-else-if="loadError" :error="loadError" @retry="loadCursos" />
         <div v-else-if="!cursos.length" class="empty-state">
           <v-icon icon="mdi-folder-open-outline" size="32"></v-icon>
           <p class="mb-0">No hay cursos creados aún. Usa «Nuevo curso» para comenzar.</p>
         </div>
 
+        <div v-else-if="!filteredCursos.length" class="empty-state">
+          <v-icon icon="mdi-magnify-close" size="32"></v-icon>
+          <p class="mb-0">Ningún curso coincide con «{{ search }}».</p>
+        </div>
+
         <v-row v-else>
           <v-col
-            v-for="(curso, index) in cursos"
+            v-for="(curso, index) in pager.items"
             :key="curso.id"
             cols="12"
             sm="6"
@@ -58,7 +74,7 @@
                     <h3 class="text-body-large font-weight-bold mb-1">{{ curso.nombre }}</h3>
                     <p class="text-body-small text-subtle mb-0 font-mono">{{ curso.codigo || 'SIN-CÓDIGO' }}</p>
                   </div>
-                  <v-chip size="x-small" variant="tonal" color="primary" class="flex-shrink-0">{{ curso.estudiantes_count || 0 }} alumnos</v-chip>
+                  <v-chip size="x-small" :variant="curso.is_active ? 'tonal' : 'outlined'" :color="curso.is_active ? 'primary' : 'grey'" class="flex-shrink-0">{{ curso.estudiantes_count || 0 }} alumnos</v-chip>
                 </div>
 
                 <div class="d-flex align-center justify-space-between flex-wrap ga-2 mt-auto">
@@ -69,7 +85,7 @@
                     <v-btn size="small" variant="outlined" :loading="togglingId === curso.id" @click="toggleActivo(curso)">
                       {{ curso.is_active ? 'Inhabilitar' : 'Habilitar' }}
                     </v-btn>
-                    <v-btn size="small" color="primary" variant="flat" append-icon="mdi-arrow-right" :to="`/coordinador/cursos/${curso.id}`">
+                    <v-btn size="small" :color="curso.is_active ? 'primary' : 'grey'" variant="flat" append-icon="mdi-arrow-right" :disabled="!curso.is_active" :to="curso.is_active ? `/coordinador/cursos/${curso.id}` : undefined">
                       Ajustes
                     </v-btn>
                   </div>
@@ -78,10 +94,11 @@
             </v-card>
           </v-col>
         </v-row>
+        <ListPagination v-model:page="pager.state.page" v-model:page-size="pager.state.pageSize" :total="pager.total" />
       </v-card-text>
     </v-card>
 
-    <v-dialog v-model="showCreateDialog" max-width="620">
+    <v-dialog v-model="createDialog" max-width="620" :persistent="saving">
       <v-card class="surface-card" rounded="xl">
         <v-card-title class="pt-5 pb-2 px-6">Nuevo curso</v-card-title>
         <v-tabs v-model="dialogTab" class="px-4" density="comfortable">
@@ -90,12 +107,12 @@
         </v-tabs>
 
         <v-card-text class="pt-5">
-          <v-form v-if="dialogTab === 'add'" class="d-flex flex-column ga-3" @submit.prevent="createCurso">
-            <v-text-field v-model="newCurso.nombre" label="Nombre del curso" />
-            <v-text-field v-model="newCurso.codigo" label="Código único (MAT-101)" class="font-mono" />
+          <v-form v-if="dialogTab === 'add'" class="d-flex flex-column ga-3" :disabled="saving" @submit.prevent="submitCourse">
+            <v-text-field v-model="newCurso.nombre" label="Nombre del curso (requerido)" :rules="[required]" :aria-invalid="attempted && !newCurso.nombre.trim() ? 'true' : undefined" />
+            <v-text-field v-model="newCurso.codigo" label="Código único (requerido, MAT-101)" class="font-mono" :rules="[required]" :aria-invalid="attempted && !newCurso.codigo.trim() ? 'true' : undefined" />
             <v-textarea v-model="newCurso.descripcion" label="Descripción (opcional)" rows="3" />
             <div class="d-flex ga-2 justify-end">
-              <v-btn variant="text" @click="showCreateDialog = false">Cancelar</v-btn>
+              <v-btn variant="text" :disabled="saving" @click="createDialog = false">Cancelar</v-btn>
               <v-btn type="submit" color="primary" variant="flat" :loading="saving">Crear curso</v-btn>
             </div>
           </v-form>
@@ -104,13 +121,13 @@
             <p class="text-body-medium text-subtle mb-0">Columnas requeridas: nombre, codigo. Opcional: descripcion.</p>
             <v-file-input
               v-model="excelFile"
-              accept=".xlsx,.xls"
+              accept=".xlsx"
               prepend-icon="mdi-file-excel-outline"
               label="Seleccionar archivo Excel"
               show-size
             ></v-file-input>
             <div class="d-flex ga-2 justify-end">
-              <v-btn variant="text" @click="showCreateDialog = false">Cancelar</v-btn>
+              <v-btn variant="text" :disabled="saving" @click="createDialog = false">Cancelar</v-btn>
               <v-btn color="primary" variant="flat" :loading="saving" @click="importCursosExcel">Importar cursos</v-btn>
             </div>
           </div>
@@ -121,16 +138,33 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, toRef } from 'vue'
 import { coordinadorService } from '../../services'
-import { coordinadorToast } from '../../composables/useToast'
-import { firstFile } from '../../utils/format'
+import { useCoordinadorToast } from '../../composables/useToast'
+import { firstFile, normalizeSearch } from '../../utils/format'
 import PageHeader from '../../components/PageHeader.vue'
 import StatCard from '../../components/StatCard.vue'
+import RegionState from '../../components/RegionState.vue'
+import ImportSummary from '../../components/ImportSummary.vue'
+import { importSummary } from '../../utils/importSummary'
+import ListPagination from '../../components/ListPagination.vue'
+import { useListState, usePagination } from '../../composables/usePagination'
+import { useFormDraft, useGuardedDialog } from '../../composables/useUnsavedChanges'
 
-const { notify, notifyError } = coordinadorToast
+const { notify, notifyError } = useCoordinadorToast()
+const required = value => Boolean(value?.trim()) || 'Este campo es requerido'
+const attempted = ref(false)
+async function submitCourse(event) {
+  attempted.value = true
+  const { valid } = await event
+  if (valid) createCurso()
+  else { await nextTick(); event.target.querySelector('[aria-invalid="true"]')?.focus() }
+}
 
 const cursos = ref([])
+const listState = useListState('coordinador-cursos')
+const search = toRef(listState, 'search')
+const loadError = ref('')
 const loading = ref(true)
 const saving = ref(false)
 const togglingId = ref(null)
@@ -138,8 +172,16 @@ const showCreateDialog = ref(false)
 const dialogTab = ref('add')
 const newCurso = reactive({ nombre: '', codigo: '', descripcion: '' })
 const excelFile = ref(null)
+const importResult = ref(null)
+const draft = useFormDraft(() => newCurso, () => showCreateDialog.value, () => saving.value)
+const createDialog = useGuardedDialog(showCreateDialog, draft, () => saving.value)
 
 const totalAlumnos = computed(() => cursos.value.reduce((sum, c) => sum + (c.estudiantes_count || 0), 0))
+const filteredCursos = computed(() => {
+  const query = normalizeSearch(search.value)
+  return cursos.value.filter((curso) => normalizeSearch(curso.nombre).includes(query))
+})
+const pager = usePagination(filteredCursos, listState, () => !loading.value && !loadError.value)
 
 function openCreateDialog() {
   dialogTab.value = 'add'
@@ -148,10 +190,12 @@ function openCreateDialog() {
 
 async function loadCursos() {
   loading.value = true
+  loadError.value = ''
   try {
     const r = await coordinadorService.listCursos()
     cursos.value = r.cursos || []
   } catch (e) {
+    loadError.value = 'No se pudieron cargar los cursos'
     notifyError(e, 'No se pudieron cargar los cursos')
   } finally {
     loading.value = false
@@ -159,6 +203,7 @@ async function loadCursos() {
 }
 
 async function createCurso() {
+  if (saving.value) return
   const nombre = newCurso.nombre.trim()
   const codigo = newCurso.codigo.trim()
   if (!nombre || !codigo) return notify('Nombre y código del curso son requeridos', true)
@@ -178,12 +223,14 @@ async function createCurso() {
 }
 
 async function importCursosExcel() {
+  if (saving.value) return
   const file = firstFile(excelFile.value)
   if (!file) return notify('Selecciona un archivo Excel', true)
 
   saving.value = true
   try {
     const r = await coordinadorService.importCursosExcel(file)
+    importResult.value = importSummary(r)
     const skipped = r.skipped?.length || 0
     notify(`Cursos importados: ${r.created || 0}${skipped ? ` · omitidos: ${skipped}` : ''}`, skipped > 0)
     excelFile.value = null
@@ -214,8 +261,8 @@ onMounted(loadCursos)
 
 <style scoped>
 .course-card {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.035) !important;
+  border: 1px solid var(--tutoria-border);
+  background: var(--tutoria-surface) !important;
   transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
@@ -226,7 +273,7 @@ onMounted(loadCursos)
 
 .course-skeleton {
   overflow: hidden;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.12);
+  border: 1px solid var(--tutoria-border);
   border-radius: 14px;
   background: transparent;
 }

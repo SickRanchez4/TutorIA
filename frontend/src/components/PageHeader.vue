@@ -36,7 +36,7 @@ defineProps({
   width: 80%;
   height: 1px;
   content: '';
-  background: linear-gradient(90deg, transparent, rgba(171, 238, 163, 0.7), transparent);
+  background: linear-gradient(90deg, transparent, rgba(var(--tutoria-green-rgb), 0.7), transparent);
   pointer-events: none;
 }
 

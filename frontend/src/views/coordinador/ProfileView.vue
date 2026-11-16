@@ -5,13 +5,13 @@
       title="Perfil de coordinador"
       subtitle="Actualiza tus datos y la seguridad de tu acceso."
     />
-    <ProfileSection @notify="notify" />
+    <ProfilePanel @notify="notify" />
   </div>
 </template>
 
 <script setup>
 import PageHeader from '../../components/PageHeader.vue'
-import ProfileSection from '../../components/ProfileSection.vue'
+import ProfilePanel from '../../components/ProfilePanel.vue'
 import { coordinadorToast } from '../../composables/useToast'
 
 const { notify } = coordinadorToast

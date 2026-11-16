@@ -17,7 +17,7 @@ const api = axios.create({
 // Add JWT token to all requests
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('auth_token')
+    const token = useAuthStore().token
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -30,10 +30,10 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && error.config?.headers?.Authorization === `Bearer ${useAuthStore().token}`) {
       const authStore = useAuthStore()
       authStore.logout()
-      router.push('/login')
+      router.push({ path: '/login', query: { session: 'expired' } })
     }
 
     if (error.response?.status === 403) {

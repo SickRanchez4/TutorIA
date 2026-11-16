@@ -35,6 +35,7 @@
           <p class="text-body-medium text-subtle mb-0">Cargando cuentas...</p>
         </div>
 
+        <RegionState v-else-if="loadError" :error="loadError" @retry="loadEstudiantes" />
         <div v-else-if="!estudiantes.length" class="empty-state">
           <v-icon icon="mdi-account-search-outline" size="32"></v-icon>
           <p class="mb-0">No hay cuentas de alumnos registradas todavía.</p>
@@ -58,13 +59,13 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="est in filteredEstudiantes" :key="est.id">
+              <tr v-for="est in pager.items" :key="est.id">
                 <td class="font-weight-medium">{{ est.full_name }}</td>
                 <td class="text-subtle">{{ est.email }}</td>
                 <td class="text-subtle">{{ est.phone || '—' }}</td>
                 <td>
-                  <v-chip size="x-small" :color="est.matriculado ? 'success' : 'grey'" :variant="est.matriculado ? 'flat' : 'outlined'">
-                    {{ est.matriculado ? 'Activa' : 'Inactiva' }}
+                  <v-chip size="x-small" :color="hasActiveEnrollment(est) ? 'success' : 'grey'" :variant="hasActiveEnrollment(est) ? 'flat' : 'outlined'">
+                    {{ hasActiveEnrollment(est) ? 'Activa' : 'Inactiva' }}
                   </v-chip>
                 </td>
                 <td class="text-subtle">{{ cursosLabel(est) }}</td>
@@ -76,10 +77,11 @@
             </tbody>
           </v-table>
         </div>
+        <ListPagination v-model:page="pager.state.page" v-model:page-size="pager.state.pageSize" :total="pager.total" />
       </v-card-text>
     </v-card>
 
-    <v-dialog :model-value="!!editing" max-width="520" @update:model-value="(open) => open || (editing = null)">
+    <v-dialog :model-value="!!editing" max-width="520" :persistent="saving" @update:model-value="open => open || closeEdit()">
       <v-card class="surface-card" rounded="xl">
         <v-card-title class="pt-5">Editar cuenta</v-card-title>
         <v-card-text>
@@ -91,7 +93,7 @@
             <v-text-field v-model="editForm.password" label="Nueva contraseña (opcional)" type="password" autocomplete="new-password" />
             <v-switch v-model="editForm.is_active" label="Cuenta habilitada" />
             <div class="d-flex ga-2 justify-end mt-1">
-              <v-btn variant="text" @click="editing = null">Cancelar</v-btn>
+              <v-btn variant="text" :disabled="saving" @click="closeEdit">Cancelar</v-btn>
               <v-btn type="submit" color="primary" variant="flat" :loading="saving">Guardar</v-btn>
             </div>
           </v-form>
@@ -99,14 +101,14 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog :model-value="!!confirmDelete" max-width="520" @update:model-value="(open) => open || (confirmDelete = null)">
+    <v-dialog :model-value="!!confirmDelete" max-width="520" :persistent="saving" @update:model-value="(open) => open || (confirmDelete = null)">
       <v-card class="surface-card" rounded="xl">
         <v-card-title class="pt-5">¿Eliminar cuenta permanentemente?</v-card-title>
         <v-card-text class="text-subtle">
           Esta acción eliminará la cuenta de <strong>{{ confirmDelete?.full_name }}</strong> y sus datos asociados (inscripciones, chats y consumo).
         </v-card-text>
         <v-card-actions class="px-6 pb-5">
-          <v-btn variant="text" @click="confirmDelete = null">Cancelar</v-btn>
+          <v-btn variant="text" :disabled="saving" @click="confirmDelete = null">Cancelar</v-btn>
           <v-spacer></v-spacer>
           <v-btn color="error" variant="flat" :loading="saving" @click="deleteEstudiante">Sí, eliminar</v-btn>
         </v-card-actions>
@@ -116,20 +118,26 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { coordinadorService } from '../../services'
-import { coordinadorToast } from '../../composables/useToast'
+import { useCoordinadorToast } from '../../composables/useToast'
 import PageHeader from '../../components/PageHeader.vue'
+import ListPagination from '../../components/ListPagination.vue'
+import RegionState from '../../components/RegionState.vue'
+import { usePagination } from '../../composables/usePagination'
+import { useFormDraft } from '../../composables/useUnsavedChanges'
 
-const { notify, notifyError } = coordinadorToast
+const { notify, notifyError } = useCoordinadorToast()
 
 const estudiantes = ref([])
 const loading = ref(true)
+const loadError = ref('')
 const saving = ref(false)
 const search = ref('')
 const editing = ref(null)
 const confirmDelete = ref(null)
 const editForm = reactive({ first_name: '', last_name: '', email: '', phone: '', password: '', is_active: true })
+const draft = useFormDraft(() => editForm, () => Boolean(editing.value), () => saving.value)
 
 const filteredEstudiantes = computed(() => {
   const q = (search.value || '').trim().toLowerCase()
@@ -138,15 +146,23 @@ const filteredEstudiantes = computed(() => {
     (e.full_name || '').toLowerCase().includes(q) || (e.email || '').toLowerCase().includes(q),
   )
 })
+const pager = usePagination(filteredEstudiantes)
+watch(search, () => { pager.state.page = 1 })
+async function closeEdit() {
+  if (!saving.value && await draft.canClose()) editing.value = null
+}
 
 const cursosLabel = (est) => (est.cursos?.length ? est.cursos.map((c) => c.codigo || c.nombre).join(', ') : 'Sin cursos')
+const hasActiveEnrollment = (est) => est.is_active && est.matriculado
 
 async function loadEstudiantes() {
   loading.value = true
+  loadError.value = ''
   try {
     const r = await coordinadorService.listEstudiantes()
     estudiantes.value = r.estudiantes || []
   } catch (e) {
+    loadError.value = 'No se pudieron cargar las cuentas'
     notifyError(e, 'No se pudieron cargar las cuentas de alumnos')
   } finally {
     loading.value = false
@@ -163,10 +179,11 @@ function openEdit(est) {
     is_active: !!est.is_active,
   })
   editing.value = est
+  draft.accept()
 }
 
 async function saveEdit() {
-  if (!editing.value) return
+  if (!editing.value || saving.value) return
   const { password, ...payload } = editForm
   if (password) payload.password = password
 
@@ -184,7 +201,7 @@ async function saveEdit() {
 }
 
 async function deleteEstudiante() {
-  if (!confirmDelete.value) return
+  if (!confirmDelete.value || saving.value) return
   saving.value = true
   try {
     await coordinadorService.deleteEstudiante(confirmDelete.value.id)

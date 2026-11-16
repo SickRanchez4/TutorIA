@@ -16,7 +16,11 @@
     rail-width="76"
     class="role-sidebar"
     :class="{ 'role-sidebar--mobile': temporary }"
-    @keydown.esc="closeSidebar"
+    :role="temporary ? 'dialog' : 'navigation'"
+    :aria-modal="temporary ? true : undefined"
+    aria-label="Navegación principal"
+    tabindex="-1"
+    @keydown="onKeyDown"
   >
     <div class="role-sidebar__header pa-4">
       <div v-if="!compact" class="role-sidebar__brand">
@@ -28,6 +32,7 @@
         </div>
       </div>
       <v-btn
+        ref="closeButton"
         icon
         variant="text"
         size="small"
@@ -47,6 +52,8 @@
         :active="isActive(item)"
         :prepend-icon="item.icon"
         :title="compact ? undefined : item.label"
+        :aria-label="item.label"
+        :aria-current="isActive(item) ? 'page' : undefined"
         rounded="lg"
         class="role-sidebar__item mb-1"
         @click="selectItem(item)"
@@ -77,7 +84,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useDisplay } from 'vuetify'
 import PanelTitle from './PanelTitle.vue'
@@ -95,8 +102,39 @@ const emit = defineEmits(['select', 'logout'])
 const { mdAndUp } = useDisplay()
 const route = useRoute()
 const rail = ref(false)
+const closeButton = ref(null)
+let trigger = null
+let restoreFocus = true
 const temporary = computed(() => !props.permanentOnDesktop || !mdAndUp.value)
 const compact = computed(() => !temporary.value && rail.value)
+
+watch(() => open.value && temporary.value, async visible => {
+  if (visible) {
+    trigger = document.activeElement
+    restoreFocus = true
+    await nextTick()
+    closeButton.value?.$el.focus()
+  } else if (restoreFocus) {
+    await nextTick()
+    if (trigger?.isConnected) trigger.focus()
+  }
+}, { flush: 'sync' })
+
+function onKeyDown(event) {
+  if (!temporary.value || !open.value || event.defaultPrevented) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeSidebar()
+  }
+  if (event.key !== 'Tab') return
+  const drawer = closeButton.value.$el.closest('.role-sidebar')
+  const controls = [...drawer.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), [tabindex="0"]')]
+    .filter(element => element.getClientRects().length)
+  const first = controls[0]
+  const last = controls.at(-1)
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+}
 
 // Route items stay highlighted on nested pages (e.g. a course detail under "Cursos").
 const isActive = (item) => (item.to ? route.path.startsWith(item.to) : props.active === item.value)
@@ -112,6 +150,7 @@ function closeSidebar() {
 }
 
 function selectItem(item) {
+  restoreFocus = false
   if (item.value) emit('select', item.value)
   if (temporary.value) open.value = false
 }
@@ -119,8 +158,9 @@ function selectItem(item) {
 
 <style scoped>
 .role-sidebar {
-  border-right: 1px solid rgba(var(--tutoria-green-rgb), 0.2) !important;
-  background: linear-gradient(180deg, rgba(28, 33, 37, 0.97), rgba(22, 26, 30, 0.97)) !important;
+  border-right: 1px solid var(--tutoria-border) !important;
+  background: var(--tutoria-sidebar-bg) !important;
+  color: var(--tutoria-text);
   backdrop-filter: blur(14px);
 }
 .role-sidebar--mobile { z-index: 1100 !important; }
@@ -128,7 +168,7 @@ function selectItem(item) {
   position: fixed;
   inset: 0;
   z-index: 1090;
-  background: rgba(7, 10, 12, 0.3);
+  background: rgba(37, 35, 27, 0.3);
   backdrop-filter: blur(7px);
   -webkit-backdrop-filter: blur(7px);
 }
@@ -143,18 +183,25 @@ function selectItem(item) {
   height: 36px;
   flex-shrink: 0;
   place-items: center;
-  border: 1px solid rgba(124, 197, 118, 0.28);
+  border: 1px solid var(--tutoria-border);
   border-radius: 12px;
-  color: #abeca3;
-  background: rgba(124, 197, 118, 0.14);
+  color: var(--tutoria-green-bright);
+  background: var(--tutoria-nav-active-bg);
 }
-.role-sidebar__close { flex-shrink: 0; color: rgba(235, 243, 235, 0.65); }
-.role-sidebar__close:hover { color: #abeca3; }
+.role-sidebar__close { flex-shrink: 0; color: var(--tutoria-text); }
+.role-sidebar__close:hover { color: var(--tutoria-green-bright); }
 .role-sidebar__user { overflow-wrap: anywhere; }
-.role-sidebar__item { border: 1px solid transparent; }
+.role-sidebar__item {
+  --v-activated-opacity: 0;
+  border: 1px solid transparent;
+  color: var(--tutoria-text);
+}
+.role-sidebar__item :deep(.v-list-item__prepend > .v-icon) {
+  opacity: 1;
+}
 .role-sidebar__item.v-list-item--active {
-  background: rgba(124, 197, 118, 0.12);
-  border-color: rgba(124, 197, 118, 0.34);
+  background: var(--tutoria-nav-active-bg);
+  border-color: var(--tutoria-border);
   color: rgb(var(--v-theme-primary));
 }
 </style>

@@ -2,25 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * Shared visual tokens. Views and components consume these variables instead
- * of repeating literal colors, so the palette can be retuned in one place.
- */
-:root {
-  --tutoria-green-rgb: 124, 197, 118;
-  --tutoria-green: rgb(var(--tutoria-green-rgb));
-  --tutoria-green-bright: #9be692;
-  --tutoria-bg: #121518;
-  --tutoria-text: #f3f6f3;
-  --tutoria-text-muted: rgba(235, 242, 235, 0.68);
-  --tutoria-border: rgba(205, 237, 199, 0.16);
-  --tutoria-border-strong: rgba(var(--tutoria-green-rgb), 0.34);
-  --tutoria-surface:
-    radial-gradient(circle at 8% 0%, rgba(var(--tutoria-green-rgb), 0.09), transparent 38%),
-    linear-gradient(145deg, rgba(42, 48, 52, 0.86), rgba(24, 29, 32, 0.92));
-  --tutoria-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
-}
-
 /* Vuetify 4 dropped its global reset; the UI was designed with zero default
    margins, so restore the minimal reset recommended by its upgrade guide. */
 @layer vuetify-core.reset {
@@ -37,7 +18,6 @@
 @layer base {
   html {
     background-color: var(--tutoria-bg);
-    color-scheme: dark;
   }
 
   body {
@@ -54,8 +34,8 @@
 .surface-card {
   position: relative;
   border: 1px solid var(--tutoria-border) !important;
-  background-color: transparent !important;
-  background-image: var(--tutoria-surface) !important;
+  background-color: var(--tutoria-surface) !important;
+  background-image: none !important;
   box-shadow: var(--tutoria-shadow);
   backdrop-filter: blur(14px);
 }
@@ -64,8 +44,79 @@
   color: var(--tutoria-text-muted);
 }
 
+.text-medium-emphasis {
+  color: var(--tutoria-text-muted) !important;
+}
+
+.v-label {
+  color: var(--tutoria-text-muted);
+}
+
+.v-field:not(.v-field--focused):not(.v-field--error) .v-field__outline {
+  color: var(--tutoria-control-border);
+}
+
+.v-list-item--active {
+  --v-activated-opacity: 0;
+  background-color: var(--tutoria-nav-active-bg);
+  color: var(--tutoria-on-selected);
+}
+
+.v-menu .v-list {
+  background-color: var(--tutoria-surface) !important;
+}
+
+.v-btn--variant-tonal {
+  color: var(--tutoria-text);
+  background-color: var(--tutoria-nav-active-bg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--tutoria-green-bright);
+  outline-offset: 2px;
+}
+
+/* Vuetify draws focus on the field outline, not the inner text input. */
+.v-field__input:focus-visible {
+  outline: none;
+}
+
+@media (forced-colors: none) {
+  .v-switch .v-switch__track {
+    opacity: 1;
+  }
+
+  .v-switch .v-selection-control:not(.v-selection-control--dirty):not(.v-selection-control--error) .v-switch__track {
+    background-color: var(--tutoria-control-border);
+  }
+
+  .v-switch .v-selection-control:not(.v-selection-control--dirty):not(.v-selection-control--error) .v-switch__thumb {
+    background-color: var(--tutoria-surface);
+  }
+
+  .v-switch .v-selection-control--dirty:not(.v-selection-control--error) .v-switch__thumb {
+    background-color: var(--tutoria-on-primary);
+  }
+}
+
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 3000;
+  padding: 12px;
+  color: var(--tutoria-text);
+  background: var(--tutoria-surface);
+  transform: translateY(-180%);
+}
+.skip-link:focus { transform: none; }
+
+.v-btn--variant-tonal > .v-btn__underlay {
+  opacity: 0;
+}
+
 .eyebrow {
-  color: var(--tutoria-green-bright);
+  color: var(--tutoria-text-muted);
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.13em;
@@ -78,10 +129,10 @@
   width: 42px;
   height: 42px;
   place-items: center;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.27);
+  border: 1px solid var(--tutoria-border);
   border-radius: 13px;
   color: var(--tutoria-green-bright);
-  background: rgba(var(--tutoria-green-rgb), 0.11);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .empty-state {
@@ -92,12 +143,12 @@
   justify-content: center;
   gap: 8px;
   padding: 16px;
-  border: 1px dashed rgba(var(--tutoria-green-rgb), 0.24);
+  border: 1px dashed var(--tutoria-border);
   border-radius: 14px;
   color: var(--tutoria-text-muted);
   font-size: 0.85rem;
   text-align: center;
-  background: rgba(var(--tutoria-green-rgb), 0.04);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .table-scroll {
@@ -120,7 +171,7 @@
 }
 
 .data-table tbody tr:hover {
-  background: rgba(var(--tutoria-green-rgb), 0.08);
+  background: var(--tutoria-nav-active-bg);
 }
 
 /* ---------- Scrollbars ---------- */
@@ -142,7 +193,7 @@
 
 ::-webkit-scrollbar-thumb {
   border-radius: 3px;
-  background-color: rgba(255, 255, 255, 0.14);
+  background-color: var(--tutoria-border);
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -164,4 +215,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
+  .v-progress-circular__overlay,
+  .v-progress-linear__indeterminate { animation: none !important; }
 }

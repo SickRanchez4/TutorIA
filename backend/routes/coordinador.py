@@ -855,6 +855,10 @@ def get_institucion_config():
     return jsonify({
         'institucion': institucion.to_dict(),
         'suscripcion': subscription_summary(institucion.id),
+        'resumen': {
+            'total_cursos': Curso.query.filter_by(institucion_id=institucion.id).count(),
+            'total_cuentas': User.query.filter_by(institucion_id=institucion.id).count(),
+        },
     }), 200
 
 @coordinador_bp.route('/institucion/config', methods=['PATCH'])

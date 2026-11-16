@@ -14,6 +14,9 @@
         subtitle="Administra instituciones, accesos, planes y suscripciones desde un solo espacio."
       />
 
+      <RegionState v-if="loadError" :error="loadError" @retry="loadAll" />
+      <v-progress-linear v-if="mutating" indeterminate color="primary" aria-label="Guardando operación" />
+      <template v-if="!loadError">
       <!-- Instituciones -->
       <template v-if="tab === 'instituciones'">
         <v-row>
@@ -52,7 +55,7 @@
               <p v-else-if="!instituciones.length" class="text-body-medium text-subtle mb-0">Sin instituciones.</p>
               <p v-else-if="!filteredInstituciones.length" class="text-body-medium text-subtle mb-0" role="status">No se encontraron instituciones.</p>
               <v-list v-else density="comfortable" class="admin-list pa-0">
-                <v-list-item v-for="inst in filteredInstituciones" :key="inst.id" class="mb-1">
+                <v-list-item v-for="inst in instPager.items" :key="inst.id" class="mb-1">
                   <div class="admin-row">
                     <div class="admin-row__main">
                       <div v-if="editInstId === inst.id" class="d-flex flex-column ga-2">
@@ -68,7 +71,7 @@
                       <v-chip size="small" :color="SUB_ESTADO_COLOR[instSubEstado(inst.id)]" variant="tonal">{{ instSubEstado(inst.id) }}</v-chip>
                       <template v-if="editInstId === inst.id">
                         <v-btn size="small" color="primary" variant="flat" @click="saveInst(inst.id)">Guardar</v-btn>
-                        <v-btn size="small" variant="text" @click="editInstId = ''">Cancelar</v-btn>
+                        <v-btn size="small" variant="text" @click="cancelInstEdit">Cancelar</v-btn>
                       </template>
                       <v-btn v-else variant="text" size="small" @click="startInstEdit(inst)">Editar</v-btn>
                       <v-btn variant="text" size="small" color="error" @click="removeInstitucion(inst)">Eliminar</v-btn>
@@ -76,6 +79,7 @@
                   </div>
                 </v-list-item>
               </v-list>
+              <ListPagination v-model:page="instPager.state.page" v-model:page-size="instPager.state.pageSize" :total="instPager.total" />
             </v-card>
           </v-col>
         </v-row>
@@ -96,13 +100,13 @@
               class="mb-3"
             />
             <v-select
-              v-model="selectedInstId"
+              :model-value="selectedInstId"
               :items="coordinadorInstitucionOptions"
               label="Selecciona una institución"
               no-data-text="No se encontraron instituciones."
               density="compact"
               class="mb-2"
-              @update:model-value="loadCoordinadores"
+              @update:model-value="selectInstitution"
             >
               <template #selection>{{ institucionNombre(selectedInstId) }}</template>
             </v-select>
@@ -131,9 +135,10 @@
               <v-progress-circular indeterminate color="primary" size="28" width="3"></v-progress-circular>
               <p class="font-weight-bold mb-0">Cargando coordinadores</p>
             </div>
+            <RegionState v-else-if="coordinadorError" :error="coordinadorError" @retry="loadCoordinadores" />
             <p v-else-if="!coordinadores.length" class="text-body-medium text-subtle mb-0">Sin coordinadores.</p>
             <v-list v-else density="comfortable" class="admin-list pa-0">
-              <v-list-item v-for="c in coordinadores" :key="c.id" class="mb-1">
+              <v-list-item v-for="c in coordPager.items" :key="c.id" class="mb-1">
                 <div class="admin-row">
                   <div class="admin-row__main">
                     <v-row v-if="editCoordId === c.id" density="compact">
@@ -151,7 +156,7 @@
                     <v-chip size="small" :color="c.is_active ? 'success' : 'default'" variant="tonal">{{ c.is_active ? 'activo' : 'inactivo' }}</v-chip>
                     <template v-if="editCoordId === c.id">
                       <v-btn size="small" color="primary" variant="flat" @click="saveCoord(c.id)">Guardar</v-btn>
-                      <v-btn size="small" variant="text" @click="editCoordId = ''">Cancelar</v-btn>
+                      <v-btn size="small" variant="text" @click="cancelCoordEdit">Cancelar</v-btn>
                     </template>
                     <v-btn v-else variant="text" size="small" @click="startCoordEdit(c)">Editar</v-btn>
                     <v-btn variant="text" size="small" color="warning" @click="toggleCoord(c)">{{ c.is_active ? 'Desactivar' : 'Activar' }}</v-btn>
@@ -160,6 +165,7 @@
                 </div>
               </v-list-item>
             </v-list>
+            <ListPagination v-model:page="coordPager.state.page" v-model:page-size="coordPager.state.pageSize" :total="coordPager.total" />
           </v-card>
         </v-col>
       </v-row>
@@ -182,10 +188,11 @@
               hide-details
               class="mb-3"
             />
-            <p v-if="!suscripciones.length" class="text-body-medium text-subtle mb-0">Sin suscripciones.</p>
+            <RegionState v-if="loading" loading />
+            <p v-else-if="!suscripciones.length" class="text-body-medium text-subtle mb-0">Sin suscripciones.</p>
             <p v-else-if="!filteredSuscripciones.length" class="text-body-medium text-subtle mb-0" role="status">No se encontraron suscripciones para esa institución.</p>
             <v-list v-else density="comfortable" class="admin-list pa-0">
-              <v-list-item v-for="s in filteredSuscripciones" :key="s.id" class="mb-2">
+              <v-list-item v-for="s in subPager.items" :key="s.id" class="mb-2">
                 <div v-if="editSubId !== s.id" class="admin-row">
                   <div class="admin-row__main">
                     <p class="text-body-medium font-weight-medium mb-0">{{ institucionNombre(s.institucion_id) }}</p>
@@ -219,11 +226,12 @@
                   </v-row>
                   <div class="d-flex ga-2 mt-2">
                     <v-btn color="primary" variant="flat" size="small" @click="saveSuscripcion(s)">Guardar</v-btn>
-                    <v-btn variant="text" size="small" @click="editSubId = ''">Cancelar</v-btn>
+                    <v-btn variant="text" size="small" @click="cancelSubEdit">Cancelar</v-btn>
                   </div>
                 </v-card>
               </v-list-item>
             </v-list>
+            <ListPagination v-model:page="subPager.state.page" v-model:page-size="subPager.state.pageSize" :total="subPager.total" />
           </v-card>
         </v-col>
       </v-row>
@@ -238,7 +246,7 @@
                   <v-text-field v-model="newPlan.nombre" label="Nombre del plan" />
                   <v-text-field v-model.number="newPlan.max_cuentas" type="number" min="1" label="Máx. cuentas" />
                   <v-text-field v-model.number="newPlan.max_almacenamiento_gb" type="number" min="1" label="Máx. almacenamiento (GB)" />
-                  <v-btn type="submit" color="primary" variant="flat" block>Crear plan</v-btn>
+                  <v-btn type="submit" color="primary" variant="flat" block :loading="mutating">Crear plan</v-btn>
                 </v-form>
               </template>
             </v-expansion-panel>
@@ -248,10 +256,11 @@
         <v-col cols="12" md="8">
           <v-card class="surface-card pa-5" rounded="xl">
             <h2 class="text-body-large font-weight-bold mb-3">Planes disponibles</h2>
-            <p v-if="!planes.length" class="text-body-medium text-subtle mb-0">Sin planes.</p>
+            <RegionState v-if="loading" loading />
+            <p v-else-if="!planes.length" class="text-body-medium text-subtle mb-0">Sin planes.</p>
             <v-list v-else density="comfortable" class="admin-list pa-0">
-              <v-list-item v-for="p in planes" :key="p.id" class="mb-1">
-                <div class="admin-row">
+              <v-list-item v-for="p in planPager.items" :key="p.id" class="mb-1">
+                <div class="admin-row" :class="{ 'admin-row--editing': editPlanId === p.id }">
                   <div class="admin-row__main">
                     <v-row v-if="editPlanId === p.id" density="compact">
                       <v-col cols="12" sm="4"><v-text-field v-model="editPlan.nombre" label="Nombre del plan" density="compact" /></v-col>
@@ -266,7 +275,7 @@
                   <div class="admin-row__actions">
                     <template v-if="editPlanId === p.id">
                       <v-btn size="small" color="primary" variant="flat" @click="savePlan(p.id)">Guardar</v-btn>
-                      <v-btn size="small" variant="text" @click="editPlanId = ''">Cancelar</v-btn>
+                      <v-btn size="small" variant="text" @click="cancelPlanEdit">Cancelar</v-btn>
                     </template>
                     <v-btn v-else variant="text" size="small" @click="startPlanEdit(p)">Editar</v-btn>
                     <v-btn variant="text" size="small" color="error" @click="removePlan(p)">Eliminar</v-btn>
@@ -274,25 +283,27 @@
                 </div>
               </v-list-item>
             </v-list>
+            <ListPagination v-model:page="planPager.state.page" v-model:page-size="planPager.state.pageSize" :total="planPager.total" />
           </v-card>
         </v-col>
       </v-row>
 
-      <ProfileSection v-show="tab === 'perfil'" @notify="toast.notify" />
+      <ProfilePanel v-show="tab === 'perfil'" @notify="toast.notify" />
+      </template>
     </div>
 
-    <v-dialog v-model="showNewInstDialog" max-width="560" :persistent="creatingInstitucion" aria-labelledby="new-institution-title">
+    <v-dialog v-model="institutionDialog" max-width="560" :persistent="creatingInstitucion" aria-labelledby="new-institution-title">
       <v-card class="surface-card" rounded="xl">
         <v-card-title class="d-flex align-center justify-space-between ga-2">
           <span id="new-institution-title" class="text-body-large font-weight-bold">Nueva institución</span>
-          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Cerrar nueva institución" :disabled="creatingInstitucion" @click="showNewInstDialog = false" />
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Cerrar nueva institución" :disabled="creatingInstitucion" @click="institutionDialog = false" />
         </v-card-title>
         <v-card-text>
           <v-form class="d-flex flex-column ga-3" @submit.prevent="createInstitucion">
             <v-text-field v-model="newInst.nombre" label="Nombre" autofocus />
             <v-text-field v-model="newInst.dominio_permitido" label="Dominio permitido (ej. uni.edu)" />
             <div class="d-flex justify-end ga-2">
-              <v-btn variant="text" :disabled="creatingInstitucion" @click="showNewInstDialog = false">Cancelar</v-btn>
+              <v-btn variant="text" :disabled="creatingInstitucion" @click="institutionDialog = false">Cancelar</v-btn>
               <v-btn type="submit" color="primary" variant="flat" :loading="creatingInstitucion">Crear institución</v-btn>
             </div>
           </v-form>
@@ -300,11 +311,11 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="showNewSubDialog" max-width="560" :persistent="assigningSuscripcion" scrollable aria-labelledby="new-subscription-title">
+    <v-dialog v-model="subscriptionDialog" max-width="560" :persistent="assigningSuscripcion" scrollable aria-labelledby="new-subscription-title">
       <v-card class="surface-card" rounded="xl">
         <v-card-title class="d-flex align-center justify-space-between ga-2">
           <span id="new-subscription-title" class="text-body-large font-weight-bold">Asignar suscripción</span>
-          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Cerrar asignación de suscripción" :disabled="assigningSuscripcion" @click="showNewSubDialog = false" />
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Cerrar asignación de suscripción" :disabled="assigningSuscripcion" @click="subscriptionDialog = false" />
         </v-card-title>
         <v-card-text>
           <v-form class="d-flex flex-column ga-3" @submit.prevent="assignSuscripcion">
@@ -313,7 +324,7 @@
             <v-text-field v-model.number="sub.limite_tokens_mensual" type="number" min="0" label="Límite de tokens mensual" />
             <v-text-field v-model="sub.fecha_fin" type="date" label="Fecha de finalización" />
             <div class="d-flex justify-end ga-2">
-              <v-btn variant="text" :disabled="assigningSuscripcion" @click="showNewSubDialog = false">Cancelar</v-btn>
+              <v-btn variant="text" :disabled="assigningSuscripcion" @click="subscriptionDialog = false">Cancelar</v-btn>
               <v-btn type="submit" color="primary" variant="flat" :loading="assigningSuscripcion">Asignar suscripción</v-btn>
             </div>
           </v-form>
@@ -321,11 +332,11 @@
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="showNewCoordDialog" max-width="560">
+    <v-dialog v-model="coordinatorDialog" max-width="560" :persistent="mutating">
       <v-card class="surface-card" rounded="xl">
         <v-card-title class="d-flex align-center justify-space-between ga-2">
           <span class="text-body-large font-weight-bold">Nuevo coordinador</span>
-          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Cerrar" @click="showNewCoordDialog = false" />
+          <v-btn icon="mdi-close" variant="text" size="small" aria-label="Cerrar" @click="coordinatorDialog = false" />
         </v-card-title>
         <v-card-text>
           <v-form class="d-flex flex-column ga-3" @submit.prevent="createCoordinador">
@@ -343,8 +354,8 @@
               density="compact"
             />
             <div class="d-flex justify-end ga-2">
-              <v-btn variant="text" @click="showNewCoordDialog = false">Cancelar</v-btn>
-              <v-btn type="submit" color="primary" variant="flat">Crear coordinador</v-btn>
+              <v-btn variant="text" :disabled="mutating" @click="coordinatorDialog = false">Cancelar</v-btn>
+              <v-btn type="submit" color="primary" variant="flat" :loading="mutating">Crear coordinador</v-btn>
             </div>
           </v-form>
         </v-card-text>
@@ -354,14 +365,20 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { superAdminService } from '../services'
 import { createToast } from '../composables/useToast'
-import { formatDate, formatNumber, toDateInput } from '../utils/format'
+import { formatDate, formatNumber, normalizeSearch, toDateInput } from '../utils/format'
 import RoleLayout from '../components/RoleLayout.vue'
 import PageHeader from '../components/PageHeader.vue'
 import StatCard from '../components/StatCard.vue'
-import ProfileSection from '../components/ProfileSection.vue'
+import ProfilePanel from '../components/ProfilePanel.vue'
+import ListPagination from '../components/ListPagination.vue'
+import RegionState from '../components/RegionState.vue'
+import { usePagination } from '../composables/usePagination'
+import { useFormDraft, useGuardedDialog, confirmNavigation } from '../composables/useUnsavedChanges'
+import { useRequestSequence } from '../composables/useRequestSequence'
+import { confirmAction } from '../composables/useConfirm'
 
 const NAV_ITEMS = [
   { value: 'instituciones', label: 'Instituciones', icon: 'mdi-domain' },
@@ -381,11 +398,12 @@ const instituciones = ref([])
 const planes = ref([])
 const suscripciones = ref([])
 const loading = ref(false)
+const loadError = ref('')
+const mutating = ref(false)
 
 const institucionSearch = ref('')
 const coordinadorInstitucionSearch = ref('')
 const suscripcionSearch = ref('')
-const normalizeSearch = (value) => (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('es')
 const matchesInstitucion = (name, query) => normalizeSearch(name).includes(normalizeSearch(query))
 const filteredInstituciones = computed(() => instituciones.value.filter((i) => matchesInstitucion(i.nombre, institucionSearch.value)))
 const filteredSuscripciones = computed(() => suscripciones.value.filter((s) => matchesInstitucion(institucionNombre(s.institucion_id), suscripcionSearch.value)))
@@ -406,6 +424,8 @@ function instSubEstado(instId) {
 
 /** Runs a mutation, notifies the outcome and refreshes the affected data. */
 async function mutate(action, successMessage, errorFallback, refresh = loadAll) {
+  if (mutating.value) return false
+  mutating.value = true
   try {
     await action()
     notify(successMessage)
@@ -414,11 +434,14 @@ async function mutate(action, successMessage, errorFallback, refresh = loadAll) 
   } catch (e) {
     notifyError(e, errorFallback)
     return false
+  } finally {
+    mutating.value = false
   }
 }
 
 async function loadAll() {
   loading.value = true
+  loadError.value = ''
   try {
     const [instResp, planesResp, subsResp] = await Promise.all([
       superAdminService.listInstituciones(),
@@ -430,6 +453,7 @@ async function loadAll() {
     suscripciones.value = subsResp.suscripciones || []
     if (selectedInstId.value) await loadCoordinadores()
   } catch (e) {
+    loadError.value = 'No se pudieron cargar los datos de administración'
     notifyError(e, 'No se pudieron cargar los datos')
   } finally {
     loading.value = false
@@ -465,9 +489,11 @@ async function createInstitucion() {
   }
 }
 
-function startInstEdit(inst) {
+async function startInstEdit(inst) {
+  if (!await instDraft.canClose()) return
   editInstId.value = inst.id
   editInst.value = { nombre: inst.nombre, dominio_permitido: inst.dominio_permitido || '' }
+  instDraft.accept()
 }
 
 async function saveInst(id) {
@@ -483,7 +509,7 @@ async function saveInst(id) {
 }
 
 async function removeInstitucion(inst) {
-  if (!window.confirm(`¿Eliminar ${inst.nombre}? Esta acción es irreversible.`)) return
+  if (!await confirmAction({ title: 'Eliminar institución', message: `¿Eliminar ${inst.nombre}? Esta acción es irreversible.`, confirmText: 'Eliminar institución', destructive: true })) return
   await mutate(() => superAdminService.deleteInstitucion(inst.id), 'Institución eliminada', 'No se pudo eliminar la institución')
 }
 
@@ -512,13 +538,15 @@ async function createPlan() {
   if (ok) newPlan.value = { nombre: '', max_cuentas: null, max_almacenamiento_gb: null }
 }
 
-function startPlanEdit(plan) {
+async function startPlanEdit(plan) {
+  if (!await planDraft.canClose()) return
   editPlanId.value = plan.id
   editPlan.value = {
     nombre: plan.nombre,
     max_cuentas: Number(plan.max_cuentas),
     max_almacenamiento_gb: Number(plan.max_almacenamiento_gb),
   }
+  planDraft.accept()
 }
 
 async function savePlan(id) {
@@ -535,7 +563,7 @@ async function savePlan(id) {
 }
 
 async function removePlan(plan) {
-  if (!window.confirm(`¿Eliminar el plan ${plan.nombre}?`)) return
+  if (!await confirmAction({ title: 'Eliminar plan', message: `¿Eliminar el plan ${plan.nombre}?`, confirmText: 'Eliminar plan', destructive: true })) return
   await mutate(() => superAdminService.deletePlan(plan.id), 'Plan eliminado', 'No se pudo eliminar el plan')
 }
 
@@ -572,7 +600,8 @@ async function assignSuscripcion() {
   }
 }
 
-function startSubEdit(s) {
+async function startSubEdit(s) {
+  if (!await subDraft.canClose()) return
   editSubId.value = s.id
   editSub.value = {
     plan_id: s.plan_id,
@@ -581,6 +610,7 @@ function startSubEdit(s) {
     fecha_inicio: toDateInput(s.fecha_inicio),
     fecha_fin: toDateInput(s.fecha_fin),
   }
+  subDraft.accept()
 }
 
 async function saveSuscripcion(item) {
@@ -598,7 +628,7 @@ async function saveSuscripcion(item) {
 }
 
 async function removeSuscripcion(item) {
-  if (!window.confirm(`¿Eliminar la suscripción de ${institucionNombre(item.institucion_id)}?`)) return
+  if (!await confirmAction({ title: 'Eliminar suscripción', message: `¿Eliminar la suscripción de ${institucionNombre(item.institucion_id)}?`, confirmText: 'Eliminar suscripción', destructive: true })) return
   await mutate(() => superAdminService.deleteSuscripcion(item.institucion_id), 'Suscripción eliminada', 'No se pudo eliminar la suscripción')
 }
 
@@ -607,6 +637,8 @@ const emptyCoord = () => ({ first_name: '', last_name: '', email: '', phone: '',
 const selectedInstId = ref(null)
 const coordinadores = ref([])
 const loadingCoordinadores = ref(false)
+const coordinadorError = ref('')
+const nextCoordinadorRequest = useRequestSequence()
 const newCoord = ref(emptyCoord())
 const editCoordId = ref('')
 const editCoord = ref({ first_name: '', last_name: '', email: '', phone: '' })
@@ -619,16 +651,19 @@ const coordinadoresLimit = computed(() => {
 })
 
 async function loadCoordinadores() {
+  const current = nextCoordinadorRequest()
   coordinadores.value = []
-  if (!selectedInstId.value) return
+  coordinadorError.value = ''
+  if (!selectedInstId.value) { loadingCoordinadores.value = false; return }
   loadingCoordinadores.value = true
   try {
     const resp = await superAdminService.listCoordinadores(selectedInstId.value)
+    if (!current()) return
     coordinadores.value = resp.coordinadores || []
   } catch (e) {
-    notifyError(e, 'No se pudieron cargar los coordinadores')
+    if (current()) { coordinadorError.value = 'No se pudieron cargar los coordinadores'; notifyError(e, coordinadorError.value) }
   } finally {
-    loadingCoordinadores.value = false
+    if (current()) loadingCoordinadores.value = false
   }
 }
 
@@ -646,9 +681,11 @@ async function createCoordinador() {
   }
 }
 
-function startCoordEdit(c) {
+async function startCoordEdit(c) {
+  if (!await coordDraft.canClose()) return
   editCoordId.value = c.id
   editCoord.value = { first_name: c.first_name || '', last_name: c.last_name || '', email: c.email || '', phone: c.phone || '' }
+  coordDraft.accept()
 }
 
 async function saveCoord(userId) {
@@ -671,7 +708,7 @@ async function toggleCoord(c) {
 }
 
 async function removeCoord(c) {
-  if (!window.confirm(`¿Eliminar al coordinador ${c.full_name}?`)) return
+  if (!await confirmAction({ title: 'Eliminar coordinador', message: `¿Eliminar al coordinador ${c.full_name}?`, confirmText: 'Eliminar coordinador', destructive: true })) return
   await mutate(
     () => superAdminService.deleteCoordinador(selectedInstId.value, c.id),
     'Coordinador eliminado',
@@ -680,6 +717,34 @@ async function removeCoord(c) {
   )
 }
 
+const instPager = usePagination(filteredInstituciones)
+const coordPager = usePagination(coordinadores)
+const subPager = usePagination(filteredSuscripciones)
+const planPager = usePagination(planes)
+watch(institucionSearch, () => { instPager.state.page = 1 })
+watch(suscripcionSearch, () => { subPager.state.page = 1 })
+const instDraft = useFormDraft(() => editInst.value, () => Boolean(editInstId.value))
+const planDraft = useFormDraft(() => editPlan.value, () => Boolean(editPlanId.value))
+const coordDraft = useFormDraft(() => editCoord.value, () => Boolean(editCoordId.value))
+const subDraft = useFormDraft(() => editSub.value, () => Boolean(editSubId.value))
+const newInstDraft = useFormDraft(() => newInst.value, () => showNewInstDialog.value)
+const newSubDraft = useFormDraft(() => sub.value, () => showNewSubDialog.value)
+const newCoordDraft = useFormDraft(() => newCoord.value, () => showNewCoordDialog.value)
+useFormDraft(() => newPlan.value, () => true, () => mutating.value)
+const institutionDialog = useGuardedDialog(showNewInstDialog, newInstDraft, () => creatingInstitucion.value)
+const subscriptionDialog = useGuardedDialog(showNewSubDialog, newSubDraft, () => assigningSuscripcion.value)
+const coordinatorDialog = useGuardedDialog(showNewCoordDialog, newCoordDraft, () => mutating.value)
+async function cancelInstEdit() { if (await instDraft.canClose()) editInstId.value = '' }
+async function cancelPlanEdit() { if (await planDraft.canClose()) editPlanId.value = '' }
+async function cancelCoordEdit() { if (await coordDraft.canClose()) editCoordId.value = '' }
+async function cancelSubEdit() { if (await subDraft.canClose()) editSubId.value = '' }
+async function selectInstitution(value) {
+  if (!await confirmNavigation()) return
+  selectedInstId.value = value
+  editCoordId.value = ''
+  coordPager.state.page = 1
+  loadCoordinadores()
+}
 onMounted(loadAll)
 </script>
 
@@ -704,8 +769,8 @@ onMounted(loadAll)
 }
 
 .admin-list :deep(.v-list-item:hover) {
-  border-color: rgba(var(--tutoria-green-rgb), 0.18);
-  background: rgba(var(--tutoria-green-rgb), 0.06);
+  border-color: var(--tutoria-border);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .admin-row {
@@ -720,6 +785,10 @@ onMounted(loadAll)
 .admin-row__main {
   flex: 1 1 260px;
   min-width: 0;
+}
+
+.admin-row--editing {
+  padding-block: 16px;
 }
 
 .admin-row__actions {

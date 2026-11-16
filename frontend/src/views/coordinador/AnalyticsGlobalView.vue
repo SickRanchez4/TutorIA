@@ -10,6 +10,7 @@
       </template>
     </PageHeader>
 
+    <RegionState v-if="loadError" :error="loadError" @retry="load" />
     <v-card class="surface-card" rounded="xl">
       <v-card-text class="pa-4 pa-md-5">
         <div class="mb-4">
@@ -17,11 +18,11 @@
           <p class="text-body-small text-subtle mb-0">Ajusta la ventana y enfoca el análisis.</p>
         </div>
         <div class="d-flex align-center flex-wrap ga-3">
-          <v-btn-toggle v-model="days" mandatory color="primary" density="compact" class="analytics-range" @update:model-value="load">
-            <v-btn :value="7">7 días</v-btn>
-            <v-btn :value="30">30 días</v-btn>
-            <v-btn :value="90">90 días</v-btn>
-            <v-btn :value="0">Personalizado</v-btn>
+          <v-btn-toggle v-model="days" mandatory color="primary" density="compact" class="analytics-range" role="group" aria-label="Período de analíticas" @update:model-value="load">
+            <v-btn :value="7" :aria-pressed="days === 7">7 días</v-btn>
+            <v-btn :value="30" :aria-pressed="days === 30">30 días</v-btn>
+            <v-btn :value="90" :aria-pressed="days === 90">90 días</v-btn>
+            <v-btn :value="0" :aria-pressed="days === 0">Personalizado</v-btn>
           </v-btn-toggle>
           <div v-if="days === 0" class="d-flex flex-wrap ga-2">
             <v-text-field v-model="customRange.start" type="date" label="Desde" density="compact" class="analytics-date" @change="loadCustomRange" />
@@ -126,16 +127,25 @@
               <p class="text-body-small text-subtle mb-0">Curso seleccionado</p>
               <p class="font-weight-black mb-0">{{ selectedCourse.curso_nombre }} · {{ currency(selectedCourse.cost_usd) }} de inversión estimada</p>
             </div>
-            <v-btn
-              v-if="selectedCourse.curso_id"
-              :to="`/coordinador/cursos/${selectedCourse.curso_id}`"
-              color="primary"
-              variant="tonal"
-              size="small"
-              append-icon="mdi-arrow-right"
-            >
-              Ver curso
-            </v-btn>
+            <div class="d-flex align-center ga-2">
+              <v-btn
+                v-if="selectedCourse.curso_id"
+                :to="`/coordinador/cursos/${selectedCourse.curso_id}`"
+                color="primary"
+                variant="tonal"
+                size="small"
+                append-icon="mdi-arrow-right"
+              >
+                Ver curso
+              </v-btn>
+              <v-btn
+                icon="mdi-close"
+                variant="text"
+                size="small"
+                aria-label="Cerrar detalle del curso"
+                @click="selectedCourseId = null"
+              />
+            </div>
           </div>
         </v-card-text>
       </v-card>
@@ -190,12 +200,14 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { coordinadorService } from '../../services'
-import { coordinadorToast } from '../../composables/useToast'
+import { useCoordinadorToast } from '../../composables/useToast'
 import { formatDate, formatNumber, toDateInput } from '../../utils/format'
 import PageHeader from '../../components/PageHeader.vue'
 import StatCard from '../../components/StatCard.vue'
+import RegionState from '../../components/RegionState.vue'
+import { useRequestSequence } from '../../composables/useRequestSequence'
 
-const { notifyError } = coordinadorToast
+const { notifyError } = useCoordinadorToast()
 
 const OPERATION_TYPES = [
   { value: '', label: 'Todo', icon: 'mdi-view-grid-outline' },
@@ -206,9 +218,11 @@ const OPERATION_TYPES = [
 
 const OPERATION_LABELS = { chat_rag: 'Chat con material', practicar: 'Modo práctica', resumen_sintetico: 'Recurso sintético' }
 
-const days = ref(30)
+const days = ref(7)
 const analytics = ref(null)
 const loading = ref(false)
+const loadError = ref('')
+const nextRequest = useRequestSequence()
 const customRange = reactive({ start: '', end: '' })
 const tipoFilter = ref('')
 const selectedCourseId = ref(null)
@@ -278,6 +292,8 @@ function selectType(type) {
 }
 
 async function load() {
+  const current = nextRequest()
+  loadError.value = ''
   let request
   if (days.value > 0) {
     setRangeFromDays()
@@ -285,17 +301,23 @@ async function load() {
   } else if (customRange.start && customRange.end) {
     request = coordinadorService.getConsumo(null, { start_date: customRange.start, end_date: customRange.end, tipo: tipoFilter.value })
   } else {
+    loadError.value = 'Selecciona las dos fechas del período personalizado.'
+    loading.value = false
     return
   }
 
   loading.value = true
   try {
-    analytics.value = await request
+    const result = await request
+    if (!current()) return
+    analytics.value = result
     selectedCourseId.value = null
   } catch (e) {
+    if (!current()) return
+    loadError.value = 'No se pudieron cargar las analíticas'
     notifyError(e, 'No se pudieron cargar las analíticas')
   } finally {
-    loading.value = false
+    if (current()) loading.value = false
   }
 }
 
@@ -330,12 +352,12 @@ function operationLabel(value) {
   align-items: center;
   gap: 7px;
   padding: 9px 12px;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.27);
+  border: 1px solid var(--tutoria-border);
   border-radius: 999px;
   color: var(--tutoria-green-bright);
   font-size: 0.75rem;
   font-weight: 700;
-  background: rgba(var(--tutoria-green-rgb), 0.1);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .analytics-range :deep(.v-btn) {
@@ -363,7 +385,7 @@ function operationLabel(value) {
 }
 
 .analytics-delta--up { color: var(--tutoria-green-bright); }
-.analytics-delta--down { color: #ffa8a8; }
+.analytics-delta--down { color: rgb(var(--v-theme-error)); }
 
 .analytics-section-icon {
   width: 34px;
@@ -372,7 +394,7 @@ function operationLabel(value) {
 }
 
 .analytics-indicator {
-  color: rgba(238, 245, 238, 0.85);
+  color: var(--tutoria-text-muted);
   font-size: 0.8rem;
 }
 
@@ -384,19 +406,19 @@ function operationLabel(value) {
 
 .analytics-course {
   padding: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--tutoria-border);
   border-radius: 15px;
   color: inherit;
   font: inherit;
   cursor: pointer;
-  background: rgba(18, 21, 26, 0.18);
+  background: var(--tutoria-surface);
   transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
 .analytics-course:hover,
 .analytics-course--selected {
   border-color: rgba(var(--tutoria-green-rgb), 0.43);
-  background: rgba(var(--tutoria-green-rgb), 0.1);
+  background: var(--tutoria-nav-active-bg);
   transform: translateY(-2px);
 }
 
@@ -411,7 +433,7 @@ function operationLabel(value) {
   color: var(--tutoria-green-bright);
   font-size: 0.68rem;
   font-weight: 800;
-  background: rgba(var(--tutoria-green-rgb), 0.13);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .analytics-course-detail {
@@ -420,9 +442,9 @@ function operationLabel(value) {
   justify-content: space-between;
   gap: 14px;
   padding: 13px 15px;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.25);
+  border: 1px solid var(--tutoria-border);
   border-radius: 14px;
-  background: rgba(var(--tutoria-green-rgb), 0.08);
+  background: var(--tutoria-nav-active-bg);
 }
 
 @media (max-width: 839px) {

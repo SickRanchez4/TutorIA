@@ -13,7 +13,16 @@
       <p class="mb-0">Cargando configuración...</p>
     </div>
 
+    <RegionState v-else-if="loadError" :error="loadError" @retry="loadConfig" />
     <v-row v-else>
+      <template v-if="resumen">
+        <v-col cols="12" md="7">
+          <StatCard label="Cursos de la institución" :value="formatNumber(resumen.total_cursos)" caption="Habilitados e inhabilitados" icon="mdi-book-multiple-outline" />
+        </v-col>
+        <v-col cols="12" md="5">
+          <StatCard label="Cuentas de la institución" :value="formatNumber(resumen.total_cuentas)" caption="Estudiantes y coordinadores" icon="mdi-account-group-outline" />
+        </v-col>
+      </template>
       <v-col cols="12" md="7">
         <v-card class="surface-card mb-4" rounded="xl">
           <v-card-title class="d-flex align-center ga-2">
@@ -24,13 +33,23 @@
             <v-btn v-else size="small" variant="text" @click="cancelEdit">Cancelar</v-btn>
           </v-card-title>
           <v-card-text>
-            <v-form class="d-flex flex-column ga-3" @submit.prevent="saveConfig">
-              <v-text-field v-model="form.nombre" label="Nombre" :readonly="!editing" />
-              <v-text-field v-model="form.dominio_permitido" label="Dominio permitido" placeholder="ej. uni.edu" :readonly="!editing" />
-              <v-btn v-if="editing" type="submit" color="primary" variant="flat" class="align-self-start" :loading="saving">
+            <v-form v-if="editing" class="d-flex flex-column ga-3" @submit.prevent="saveConfig">
+              <v-text-field v-model="form.nombre" label="Nombre" />
+              <v-text-field v-model="form.dominio_permitido" label="Dominio permitido" placeholder="ej. uni.edu" />
+              <v-btn type="submit" color="primary" variant="flat" class="align-self-start" :loading="saving">
                 Guardar cambios
               </v-btn>
             </v-form>
+            <dl v-else class="institution-data">
+              <div>
+                <dt>Nombre</dt>
+                <dd>{{ institucion.nombre || '—' }}</dd>
+              </div>
+              <div>
+                <dt>Dominio permitido</dt>
+                <dd>{{ institucion.dominio_permitido || 'Sin restricción de dominio' }}</dd>
+              </div>
+            </dl>
           </v-card-text>
         </v-card>
 
@@ -89,18 +108,24 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { coordinadorService } from '../../services'
-import { coordinadorToast } from '../../composables/useToast'
+import { useCoordinadorToast } from '../../composables/useToast'
 import { formatDate, formatNumber } from '../../utils/format'
 import PageHeader from '../../components/PageHeader.vue'
+import StatCard from '../../components/StatCard.vue'
+import RegionState from '../../components/RegionState.vue'
+import { useFormDraft } from '../../composables/useUnsavedChanges'
 
-const { notify, notifyError } = coordinadorToast
+const { notify, notifyError } = useCoordinadorToast()
 
 const institucion = ref({ nombre: '', dominio_permitido: '', is_active: true, created_at: null })
 const form = reactive({ nombre: '', dominio_permitido: '' })
 const suscripcion = ref(null)
+const resumen = ref(null)
 const loading = ref(true)
 const saving = ref(false)
 const editing = ref(false)
+const loadError = ref('')
+const draft = useFormDraft(() => form, () => editing.value, () => saving.value)
 
 function resetForm() {
   form.nombre = institucion.value.nombre || ''
@@ -109,22 +134,27 @@ function resetForm() {
 
 function startEdit() {
   resetForm()
+  draft.accept()
   editing.value = true
 }
 
-function cancelEdit() {
+async function cancelEdit() {
+  if (saving.value || !await draft.canClose()) return
   resetForm()
   editing.value = false
 }
 
 async function loadConfig() {
   loading.value = true
+  loadError.value = ''
   try {
     const r = await coordinadorService.getConfig()
     institucion.value = { ...institucion.value, ...(r.institucion || {}) }
     suscripcion.value = r.suscripcion || null
+    resumen.value = r.resumen
     resetForm()
   } catch (e) {
+    loadError.value = 'No se pudo cargar la configuración'
     notifyError(e, 'No se pudo cargar la configuración')
   } finally {
     loading.value = false
@@ -132,6 +162,7 @@ async function loadConfig() {
 }
 
 async function saveConfig() {
+  if (saving.value) return
   saving.value = true
   try {
     await coordinadorService.updateConfig({ ...form })
@@ -149,9 +180,33 @@ onMounted(loadConfig)
 </script>
 
 <style scoped>
+.institution-data {
+  display: grid;
+  gap: 16px;
+  cursor: default;
+}
+
+.institution-data > div {
+  padding: 14px 16px;
+  border: 1px solid var(--tutoria-border);
+  border-radius: 12px;
+}
+
+.institution-data dt {
+  margin-bottom: 5px;
+  color: var(--tutoria-text-muted);
+  font-size: 0.78rem;
+}
+
+.institution-data dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
 .subscription-detail {
   padding-top: 10px;
-  border-top: 1px solid rgba(var(--tutoria-green-rgb), 0.14);
+  border-top: 1px solid var(--tutoria-border);
   color: var(--tutoria-text-muted);
   font-size: 0.78rem;
 }

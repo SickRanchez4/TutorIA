@@ -1,9 +1,22 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { authService } from '../services'
+import { discardPrivateDrafts } from '../composables/useUnsavedChanges'
+import { clearListStates } from '../composables/usePagination'
+import { coordinadorToast } from '../composables/useToast'
+import { resolveConfirmation } from '../composables/useConfirm'
 
 const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'user_data'
+
+function withAuthStorage(action) {
+  try {
+    return action(localStorage)
+  } catch (error) {
+    console.warn('El almacenamiento de sesión no está disponible; se usará solo memoria.', error.name)
+    return null
+  }
+}
 
 const DASHBOARD_ROUTES = {
   super_admin: '/super-admin',
@@ -42,20 +55,21 @@ export const useAuthStore = defineStore('auth', () => {
 
   function persistUser(userObj) {
     user.value = normalizeUser(userObj)
-    localStorage.setItem(USER_KEY, JSON.stringify(user.value))
+    withAuthStorage(storage => storage.setItem(USER_KEY, JSON.stringify(user.value)))
   }
 
   async function login(credentials) {
+    if (isLoading.value) return { success: false }
     isLoading.value = true
     error.value = ''
     try {
       const data = await authService.login(credentials)
       token.value = data.token
-      localStorage.setItem(TOKEN_KEY, data.token)
+      withAuthStorage(storage => storage.setItem(TOKEN_KEY, data.token))
       persistUser(data.user)
       return { success: true, user: user.value }
-    } catch (err) {
-      error.value = err.message || 'Error de autenticación'
+    } catch {
+      error.value = 'No se pudo iniciar sesión. Revisa tus credenciales y la conexión.'
       return { success: false, error: error.value }
     } finally {
       isLoading.value = false
@@ -63,16 +77,20 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
+    resolveConfirmation(false)
+    discardPrivateDrafts()
+    clearListStates()
+    coordinadorToast.clear()
     user.value = null
     token.value = null
     error.value = ''
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
+    withAuthStorage(storage => { storage.removeItem(TOKEN_KEY); storage.removeItem(USER_KEY) })
   }
 
   function initializeAuth() {
-    const storedToken = localStorage.getItem(TOKEN_KEY)
-    const storedUser = localStorage.getItem(USER_KEY)
+    const stored = withAuthStorage(storage => ({ token: storage.getItem(TOKEN_KEY), user: storage.getItem(USER_KEY) }))
+    const storedToken = stored?.token
+    const storedUser = stored?.user
     if (!storedToken || !storedUser) return
     try {
       if (!isTokenUsable(storedToken)) return logout()

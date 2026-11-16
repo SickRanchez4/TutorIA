@@ -19,6 +19,8 @@
       </div>
     </v-card>
 
+    <RegionState v-if="loading || loadError" :loading="loading" :error="loadError" @retry="loadAgenda" />
+    <template v-else>
     <v-card class="surface-card pa-3 pa-sm-4" rounded="xl">
       <div class="agenda-calendar" tabindex="0" aria-label="Calendario mensual; desliza horizontalmente para verlo completo">
         <div class="agenda-grid mb-2" aria-hidden="true">
@@ -66,6 +68,7 @@
         </v-list-item>
       </v-list>
     </v-card>
+    </template>
   </div>
 </template>
 
@@ -74,6 +77,8 @@ import { computed, onMounted, ref } from 'vue'
 import { estudianteService } from '../../services'
 import { errorMessage } from '../../composables/useToast'
 import { formatDate, formatDateTime } from '../../utils/format'
+import RegionState from '../../components/RegionState.vue'
+import { useRequestSequence } from '../../composables/useRequestSequence'
 
 /** Read-only monthly agenda of the student's activities. */
 const props = defineProps({
@@ -88,6 +93,8 @@ const DEADLINE_FORMAT = { day: '2-digit', month: 'short', hour: '2-digit', minut
 const actividades = ref([])
 const grupoFilter = ref('')
 const loading = ref(false)
+const loadError = ref('')
+const nextRequest = useRequestSequence()
 const today = new Date()
 const viewMonth = ref(new Date(today.getFullYear(), today.getMonth(), 1))
 
@@ -147,14 +154,19 @@ function shiftMonth(delta) {
 }
 
 async function loadAgenda() {
+  const current = nextRequest()
   loading.value = true
+  loadError.value = ''
   try {
     const r = await estudianteService.getAgenda(grupoFilter.value || null)
+    if (!current()) return
     actividades.value = r.actividades || []
   } catch (e) {
+    if (!current()) return
+    loadError.value = errorMessage(e, 'No se pudo cargar la agenda')
     emit('notify', errorMessage(e, 'No se pudo cargar la agenda'), true)
   } finally {
-    loading.value = false
+    if (current()) loading.value = false
   }
 }
 
@@ -193,22 +205,22 @@ onMounted(loadAgenda)
 
 .agenda-day {
   min-height: 98px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--tutoria-border);
   border-radius: 12px;
   transition: border-color 0.2s ease, background 0.2s ease;
 }
 
-.agenda-day--in { background: rgba(255, 255, 255, 0.03); }
-.agenda-day--out { background: rgba(255, 255, 255, 0.01); }
+.agenda-day--in { background: var(--tutoria-surface); }
+.agenda-day--out { background: var(--tutoria-nav-active-bg); }
 
 .agenda-day--in:hover {
   border-color: rgba(var(--tutoria-green-rgb), 0.32);
-  background: rgba(var(--tutoria-green-rgb), 0.05);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .agenda-day--today {
-  border-color: rgba(155, 230, 146, 0.55);
-  background: rgba(var(--tutoria-green-rgb), 0.08);
+  border-color: var(--tutoria-green);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .agenda-day__events {
@@ -224,15 +236,15 @@ onMounted(loadAgenda)
   display: block;
   padding: 4px 6px;
   border-radius: 6px;
-  color: #0a0a0c;
+  color: var(--tutoria-on-primary);
   font-size: 10px;
   font-weight: 600;
 }
 
-.agenda-event--examen { background: rgba(var(--tutoria-green-rgb), 0.95); }
-.agenda-event--tarea { background: rgba(var(--tutoria-green-rgb), 0.7); }
-.agenda-event--proyecto { background: rgba(255, 255, 255, 0.7); }
-.agenda-event--default { background: rgba(154, 155, 163, 0.9); }
+.agenda-event--examen { background: var(--tutoria-green); }
+.agenda-event--tarea { background: var(--tutoria-green); }
+.agenda-event--proyecto { background: var(--tutoria-nav-active-bg); color: var(--tutoria-text); }
+.agenda-event--default { background: var(--tutoria-border); color: var(--tutoria-text); }
 
 @media (max-width: 599px) {
   .agenda-toolbar__month,

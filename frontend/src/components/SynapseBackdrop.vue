@@ -3,7 +3,8 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useAppearance } from '../composables/useAppearance'
 
 /**
  * Red sináptica decorativa en canvas: nodos verdes conectados que
@@ -16,13 +17,17 @@ const props = defineProps({
   density: { type: Number, default: 22000 },
   minNodes: { type: Number, default: 36 },
   maxNodes: { type: Number, default: 110 },
+  thickness: { type: Number, default: 1 },
+  lively: Boolean,
 })
 
 const prefersReducedMotion =
   typeof window !== 'undefined' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
 
 const canvasEl = ref(null)
+const { appearance } = useAppearance()
+let greenRgb = ''
 const pointer = { x: -9999, y: -9999, active: false }
 let hostEl = null
 let ctx = null
@@ -37,13 +42,17 @@ const POINTER_DIST = 190
 function buildNodes() {
   const area = canvasW * canvasH
   const count = Math.max(props.minNodes, Math.min(props.maxNodes, Math.round(area / props.density)))
-  nodes = Array.from({ length: count }, () => ({
-    x: Math.random() * canvasW,
-    y: Math.random() * canvasH,
-    vx: (Math.random() - 0.5) * 0.28,
-    vy: (Math.random() - 0.5) * 0.28,
-    r: 0.8 + Math.random() * 1.2
-  }))
+  nodes = Array.from({ length: count }, () => {
+    const angle = Math.random() * Math.PI * 2
+    const speed = 0.18 + Math.random() * 0.16
+    return {
+      x: Math.random() * canvasW,
+      y: Math.random() * canvasH,
+      vx: props.lively ? Math.cos(angle) * speed : (Math.random() - 0.5) * 0.28,
+      vy: props.lively ? Math.sin(angle) * speed : (Math.random() - 0.5) * 0.28,
+      r: (0.8 + Math.random() * 1.2) * props.thickness
+    }
+  })
 }
 
 function resizeCanvas() {
@@ -84,6 +93,11 @@ function stepSynapse() {
     if (speed > 0.6) {
       n.vx = (n.vx / speed) * 0.6
       n.vy = (n.vy / speed) * 0.6
+    } else if (props.lively && speed < 0.18) {
+      // Keep the login drifting even after pointer attraction has faded.
+      const angle = Math.atan2(n.vy, n.vx)
+      n.vx = Math.cos(angle) * 0.18
+      n.vy = Math.sin(angle) * 0.18
     }
     n.x += n.vx
     n.y += n.vy
@@ -102,9 +116,9 @@ function stepSynapse() {
       const dy = a.y - b.y
       const dist = Math.hypot(dx, dy)
       if (dist < LINK_DIST) {
-        const alpha = (1 - dist / LINK_DIST) * 0.16
-        ctx.strokeStyle = `rgba(124, 197, 118, ${alpha})`
-        ctx.lineWidth = 1
+        const alpha = (1 - dist / LINK_DIST) * (props.lively ? 0.28 : 0.16)
+        ctx.strokeStyle = `rgba(${greenRgb}, ${alpha})`
+        ctx.lineWidth = props.thickness
         ctx.beginPath()
         ctx.moveTo(a.x, a.y)
         ctx.lineTo(b.x, b.y)
@@ -118,9 +132,9 @@ function stepSynapse() {
     for (const n of nodes) {
       const dist = Math.hypot(pointer.x - n.x, pointer.y - n.y)
       if (dist < POINTER_DIST) {
-        const alpha = (1 - dist / POINTER_DIST) * 0.4
-        ctx.strokeStyle = `rgba(164, 233, 149, ${alpha})`
-        ctx.lineWidth = 1
+        const alpha = (1 - dist / POINTER_DIST) * (props.lively ? 0.55 : 0.4)
+        ctx.strokeStyle = `rgba(${greenRgb}, ${alpha})`
+        ctx.lineWidth = props.thickness
         ctx.beginPath()
         ctx.moveTo(pointer.x, pointer.y)
         ctx.lineTo(n.x, n.y)
@@ -134,8 +148,8 @@ function stepSynapse() {
     const nearPointer =
       pointer.active && Math.hypot(pointer.x - n.x, pointer.y - n.y) < POINTER_DIST
     ctx.fillStyle = nearPointer
-      ? 'rgba(182, 242, 170, 0.85)'
-      : 'rgba(124, 197, 118, 0.45)'
+      ? `rgba(${greenRgb}, ${props.lively ? 0.85 : 0.65})`
+      : `rgba(${greenRgb}, ${props.lively ? 0.6 : 0.3})`
     ctx.beginPath()
     ctx.arc(n.x, n.y, nearPointer ? n.r + 0.6 : n.r, 0, Math.PI * 2)
     ctx.fill()
@@ -153,15 +167,15 @@ function drawStaticSynapse() {
       const b = nodes[j]
       const dist = Math.hypot(a.x - b.x, a.y - b.y)
       if (dist < LINK_DIST) {
-        ctx.strokeStyle = `rgba(124, 197, 118, ${(1 - dist / LINK_DIST) * 0.14})`
-        ctx.lineWidth = 1
+        ctx.strokeStyle = `rgba(${greenRgb}, ${(1 - dist / LINK_DIST) * (props.lively ? 0.24 : 0.14)})`
+        ctx.lineWidth = props.thickness
         ctx.beginPath()
         ctx.moveTo(a.x, a.y)
         ctx.lineTo(b.x, b.y)
         ctx.stroke()
       }
     }
-    ctx.fillStyle = 'rgba(124, 197, 118, 0.4)'
+    ctx.fillStyle = `rgba(${greenRgb}, ${props.lively ? 0.6 : 0.3})`
     ctx.beginPath()
     ctx.arc(a.x, a.y, a.r, 0, Math.PI * 2)
     ctx.fill()
@@ -192,7 +206,16 @@ function onVisibilityChange() {
   }
 }
 
+function updatePalette() {
+  if (!canvasEl.value) return
+  greenRgb = getComputedStyle(canvasEl.value).getPropertyValue('--tutoria-green-rgb').trim()
+  if (prefersReducedMotion) drawStaticSynapse()
+}
+
+watch(() => appearance.value.resolved, updatePalette, { flush: 'post' })
+
 onMounted(() => {
+  updatePalette()
   hostEl = canvasEl.value?.parentElement || null
   resizeCanvas()
   if (prefersReducedMotion) {

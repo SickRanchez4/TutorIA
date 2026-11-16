@@ -1,5 +1,9 @@
 const LOCALE = 'es-BO'
 
+export function normalizeSearch(value) {
+  return (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLocaleLowerCase('es')
+}
+
 function toDate(value) {
   if (!value) return null
   const date = value instanceof Date ? value : new Date(value)

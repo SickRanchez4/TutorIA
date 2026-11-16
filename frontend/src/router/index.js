@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { confirmNavigation } from '../composables/useUnsavedChanges'
 
 const Login = () => import('../views/Login.vue')
 const SuperAdminDashboard = () => import('../views/SuperAdminDashboard.vue')
@@ -51,7 +52,7 @@ const routes = [
   },
   {
     path: '/:pathMatch(.*)*',
-    redirect: '/login'
+    component: () => import('../views/NotFound.vue')
   }
 ]
 
@@ -62,7 +63,7 @@ const router = createRouter({
 })
 
 // Navigation guards
-router.beforeEach((to) => {
+router.beforeEach(async (to, from) => {
   const authStore = useAuthStore()
 
   if (to.meta.requiresAuth) {
@@ -78,6 +79,7 @@ router.beforeEach((to) => {
   if (to.meta.requiresGuest && authStore.isAuthenticated) {
     return authStore.dashboardRoute
   }
+  if (authStore.isAuthenticated && to.path !== from.path && !await confirmNavigation()) return false
 })
 
 export default router

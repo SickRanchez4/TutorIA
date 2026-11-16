@@ -4,7 +4,12 @@
       <component :is="Component" />
     </transition>
   </router-view>
+  <ConfirmDialog />
 </template>
+
+<script setup>
+import ConfirmDialog from './components/ConfirmDialog.vue'
+</script>
 
 <style>
 .page-fade-enter-active,

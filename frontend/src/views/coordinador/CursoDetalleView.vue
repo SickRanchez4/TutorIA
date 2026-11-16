@@ -61,7 +61,7 @@
                 <v-btn v-else size="small" variant="text" @click="cancelEditDatos">Cancelar</v-btn>
               </v-card-title>
               <v-card-text>
-                <v-form class="d-flex flex-column ga-3" @submit.prevent="updateCurso">
+                <v-form class="d-flex flex-column ga-3" :disabled="busy.datos" @submit.prevent="updateCurso">
                   <v-text-field v-model="editCurso.nombre" label="Nombre" :readonly="!editingDatos" />
                   <v-text-field v-model="editCurso.codigo" label="Código" class="font-mono" :readonly="!editingDatos" />
                   <v-textarea v-model="editCurso.descripcion" label="Descripción" rows="3" :readonly="!editingDatos" />
@@ -86,7 +86,7 @@
                   :key="m.key"
                   :model-value="modos[m.key]"
                   :label="m.label"
-                  :disabled="loading.agente"
+                  :disabled="loading.agente || busy.agente || !!errors.agente"
                   @update:model-value="(val) => toggleModo(m.key, val)"
                 />
               </v-card-text>
@@ -123,11 +123,14 @@
           </v-card-text>
           <v-divider></v-divider>
           <v-card-text>
+            <ImportSummary :result="importResult" />
+            <v-text-field v-model="studentSearch" label="Buscar alumnos por nombre o correo" prepend-inner-icon="mdi-magnify" clearable />
             <div v-if="loading.alumnos" class="d-flex flex-column align-center justify-center py-10 ga-3" role="status">
               <v-progress-circular indeterminate color="primary" size="38" width="4" />
               <p class="text-body-medium text-subtle mb-0">Cargando alumnos...</p>
             </div>
 
+            <RegionState v-else-if="errors.alumnos" :error="errors.alumnos" @retry="loadEstudiantes" />
             <div v-else-if="!estudiantes.length" class="empty-state">
               <v-icon icon="mdi-account-off-outline" size="30"></v-icon>
               <p class="mb-0">No hay alumnos inscritos en este curso.</p>
@@ -144,7 +147,7 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="a in estudiantes" :key="a.user_id">
+                  <tr v-for="a in studentPager.items" :key="a.user_id">
                     <td>{{ a.full_name }}</td>
                     <td class="text-subtle">{{ a.email }}</td>
                     <td class="text-subtle">{{ formatDate(a.fecha_inscripcion, undefined, 'Sin fecha') }}</td>
@@ -155,6 +158,7 @@
                 </tbody>
               </v-table>
             </div>
+            <ListPagination v-model:page="studentPager.state.page" v-model:page-size="studentPager.state.pageSize" :total="studentPager.total" />
           </v-card-text>
         </v-card>
       </v-window-item>
@@ -166,6 +170,7 @@
           <p class="text-body-medium text-subtle mb-0">Cargando configuración del agente...</p>
         </div>
 
+        <RegionState v-else-if="errors.agente" :error="errors.agente" @retry="loadAgente" />
         <v-row v-else>
           <v-col cols="12" md="7">
             <v-card class="surface-card" rounded="xl">
@@ -174,7 +179,7 @@
                 <h2 class="text-body-large font-weight-bold">Configuración del agente</h2>
               </v-card-title>
               <v-card-text>
-                <v-form class="d-flex flex-column ga-4" @submit.prevent="saveAgente">
+                <v-form class="d-flex flex-column ga-4" :disabled="busy.agente" @submit.prevent="saveAgente">
                   <v-textarea v-model="agente.system_prompt" label="System prompt" rows="6" auto-grow />
 
                   <div>
@@ -209,9 +214,10 @@
                 <h2 class="text-body-large font-weight-bold">Base de conocimiento (PDF)</h2>
               </v-card-title>
               <v-card-text class="d-flex flex-column ga-3">
-                <p class="text-body-small text-subtle mb-0">Sube uno o más PDF para ampliar el conocimiento disponible del curso.</p>
+                <p class="text-body-small text-subtle mb-0">Hasta 10 PDF por carga, de 20 MiB como máximo cada uno.</p>
 
                 <v-skeleton-loader v-if="loading.conocimiento" type="list-item-two-line" class="bg-transparent" />
+                <RegionState v-else-if="errors.conocimiento" :error="errors.conocimiento" @retry="loadConocimiento" />
                 <div v-else-if="conocimiento" class="knowledge-box">
                   <div class="d-flex align-center justify-space-between ga-2 mb-2">
                     <span class="text-body-small font-weight-bold">Estado de la base</span>
@@ -273,7 +279,7 @@
       </v-window-item>
     </v-window>
 
-    <v-dialog v-model="showAlumnoDialog" max-width="640">
+    <v-dialog v-model="alumnoDialog" max-width="640" :persistent="busy.alumno">
       <v-card class="surface-card" rounded="xl">
         <v-card-title class="pt-5 pb-2 px-6">Gestionar alumnos</v-card-title>
         <v-tabs v-model="alumnoDialogTab" class="px-4">
@@ -281,7 +287,7 @@
           <v-tab value="import" prepend-icon="mdi-file-excel">Importar desde Excel</v-tab>
         </v-tabs>
         <v-card-text class="pt-5">
-          <v-form v-if="alumnoDialogTab === 'add'" class="d-flex flex-column ga-3" @submit.prevent="addEstudiante">
+          <v-form v-if="alumnoDialogTab === 'add'" class="d-flex flex-column ga-3" :disabled="busy.alumno" @submit.prevent="addEstudiante">
             <v-text-field v-model="newAlumno.email" label="Email" type="email" />
             <v-text-field v-model="newAlumno.first_name" label="Nombre" />
             <v-text-field v-model="newAlumno.last_name" label="Apellido" />
@@ -295,7 +301,7 @@
               persistent-hint
             />
             <div class="d-flex ga-2 justify-end mt-1">
-              <v-btn variant="text" @click="showAlumnoDialog = false">Cancelar</v-btn>
+              <v-btn variant="text" :disabled="busy.alumno" @click="alumnoDialog = false">Cancelar</v-btn>
               <v-btn type="submit" color="primary" variant="flat" :loading="busy.alumno">Inscribir alumno</v-btn>
             </div>
           </v-form>
@@ -304,13 +310,13 @@
             <p class="text-body-medium text-subtle mb-0">Columnas: email, nombre, apellido, password (para cuentas nuevas), phone (opcional).</p>
             <v-file-input
               v-model="alumnosExcelFile"
-              accept=".xlsx,.xls"
+              accept=".xlsx"
               label="Seleccionar archivo Excel"
               prepend-icon="mdi-file-excel-outline"
               show-size
             ></v-file-input>
             <div class="d-flex ga-2 justify-end">
-              <v-btn variant="text" @click="showAlumnoDialog = false">Cancelar</v-btn>
+              <v-btn variant="text" :disabled="busy.alumno" @click="alumnoDialog = false">Cancelar</v-btn>
               <v-btn color="primary" variant="flat" :loading="busy.alumno" @click="importAlumnosExcel">Importar alumnos</v-btn>
             </div>
           </div>
@@ -338,14 +344,23 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { coordinadorService } from '../../services'
-import { coordinadorToast } from '../../composables/useToast'
+import { useCoordinadorToast } from '../../composables/useToast'
 import { firstFile, formatDate, formatDateTime, formatFileSize } from '../../utils/format'
 import PageHeader from '../../components/PageHeader.vue'
 import StatCard from '../../components/StatCard.vue'
+import RegionState from '../../components/RegionState.vue'
+import ListPagination from '../../components/ListPagination.vue'
+import ImportSummary from '../../components/ImportSummary.vue'
+import { importSummary } from '../../utils/importSummary'
+import { normalizeSearch } from '../../utils/format'
+import { usePagination } from '../../composables/usePagination'
+import { useFormDraft, useGuardedDialog } from '../../composables/useUnsavedChanges'
+import { useRequestSequence } from '../../composables/useRequestSequence'
+import { confirmAction } from '../../composables/useConfirm'
 
 const route = useRoute()
 const router = useRouter()
-const { notify, notifyError } = coordinadorToast
+const { notify, notifyError } = useCoordinadorToast()
 
 const TABS = [
   { key: 'resumen', label: 'Resumen', icon: 'mdi-chart-line' },
@@ -393,6 +408,17 @@ const deletingDocument = ref('')
 
 const loading = reactive({ curso: true, alumnos: true, agente: true, conocimiento: true })
 const busy = reactive({ datos: false, estado: false, eliminar: false, alumno: false, agente: false, subida: false, vaciar: false })
+const errors = reactive({ alumnos: '', agente: '', conocimiento: '' })
+const requests = { curso: useRequestSequence(), alumnos: useRequestSequence(), agente: useRequestSequence(), conocimiento: useRequestSequence() }
+const cursoDraft = useFormDraft(() => editCurso, () => editingDatos.value, () => busy.datos || busy.estado || busy.eliminar)
+const agenteDraft = useFormDraft(() => agente, () => !loading.agente && !errors.agente, () => busy.agente || busy.subida || busy.vaciar || Boolean(deletingDocument.value || retryingJobId.value))
+const alumnoDraft = useFormDraft(() => newAlumno, () => showAlumnoDialog.value, () => busy.alumno || Boolean(removingId.value))
+const alumnoDialog = useGuardedDialog(showAlumnoDialog, alumnoDraft, () => busy.alumno)
+const importResult = ref(null)
+const studentSearch = ref('')
+const filteredStudents = computed(() => estudiantes.value.filter(student => normalizeSearch(`${student.full_name} ${student.email}`).includes(normalizeSearch(studentSearch.value))))
+const studentPager = usePagination(filteredStudents)
+watch(studentSearch, () => { studentPager.state.page = 1 })
 
 const latestFailedJob = computed(() => conocimiento.value?.trabajos?.find((job) => ['failed', 'unknown'].includes(job.estado)) || null)
 const knowledgeStatus = computed(() => {
@@ -408,28 +434,34 @@ function syncEditCurso() {
 }
 
 async function loadCurso() {
+  const current = requests.curso()
   try {
     const r = await coordinadorService.getCurso(cursoId.value)
+    if (!current()) return
     curso.value = r.curso || null
-    syncEditCurso()
+    if (!cursoDraft.dirty.value) { syncEditCurso(); cursoDraft.accept() }
   } catch (e) {
+    if (!current()) return
     curso.value = null
     notifyError(e, 'No se pudo cargar el curso')
   } finally {
-    loading.curso = false
+    if (current()) loading.curso = false
   }
 }
 
-function cancelEditDatos() {
+async function cancelEditDatos() {
+  if (busy.datos || !await cursoDraft.canClose()) return
   syncEditCurso()
   editingDatos.value = false
 }
 
 async function updateCurso() {
+  if (busy.datos) return
   busy.datos = true
   try {
     const r = await coordinadorService.updateCurso(cursoId.value, { ...editCurso })
     curso.value = { ...curso.value, ...r.curso }
+    cursoDraft.accept()
     editingDatos.value = false
     notify('Curso actualizado')
   } catch (e) {
@@ -440,6 +472,7 @@ async function updateCurso() {
 }
 
 async function toggleActivo() {
+  if (busy.estado) return
   busy.estado = true
   try {
     const r = await coordinadorService.updateCurso(cursoId.value, { is_active: !curso.value.is_active })
@@ -453,9 +486,13 @@ async function toggleActivo() {
 }
 
 async function deleteCurso() {
+  if (busy.eliminar) return
   busy.eliminar = true
   try {
     await coordinadorService.deleteCurso(cursoId.value)
+    editingDatos.value = false
+    cursoDraft.accept()
+    agenteDraft.accept()
     notify('Curso eliminado permanentemente')
     router.push('/coordinador/cursos')
   } catch (e) {
@@ -468,14 +505,19 @@ async function deleteCurso() {
 
 /* ---------- Alumnos ---------- */
 async function loadEstudiantes() {
+  const current = requests.alumnos()
   loading.alumnos = true
+  errors.alumnos = ''
   try {
     const r = await coordinadorService.listEstudiantesCurso(cursoId.value)
+    if (!current()) return
     estudiantes.value = r.estudiantes || []
   } catch (e) {
+    if (!current()) return
+    errors.alumnos = 'No se pudieron cargar los alumnos'
     notifyError(e, 'No se pudieron cargar los alumnos')
   } finally {
-    loading.alumnos = false
+    if (current()) loading.alumnos = false
   }
 }
 
@@ -487,6 +529,7 @@ function openAlumnoDialog() {
 }
 
 async function addEstudiante() {
+  if (busy.alumno) return
   if (!newAlumno.email.trim()) return notify('El email es requerido', true)
   busy.alumno = true
   try {
@@ -503,12 +546,14 @@ async function addEstudiante() {
 }
 
 async function importAlumnosExcel() {
+  if (busy.alumno) return
   const file = firstFile(alumnosExcelFile.value)
   if (!file) return notify('Selecciona un archivo Excel', true)
 
   busy.alumno = true
   try {
     const r = await coordinadorService.importEstudiantesCursoExcel(cursoId.value, file)
+    importResult.value = importSummary(r)
     const skipped = r.skipped?.length || 0
     notify(
       `Importación: ${r.enrolled || 0} inscripciones, ${r.created || 0} cuentas nuevas${skipped ? `, ${skipped} filas omitidas` : ''}`,
@@ -525,7 +570,8 @@ async function importAlumnosExcel() {
 }
 
 async function removeEstudiante(alumno) {
-  if (!window.confirm(`¿Desinscribir a ${alumno.full_name || alumno.email} de este curso?`)) return
+  if (removingId.value) return
+  if (!await confirmAction({ title: 'Desinscribir alumno', message: `¿Desinscribir a ${alumno.full_name || alumno.email} de este curso? Su cuenta y el acceso a otros cursos se conservan.`, confirmText: 'Desinscribir', destructive: true })) return
   removingId.value = alumno.user_id
   try {
     await coordinadorService.removeEstudianteCurso(cursoId.value, alumno.user_id)
@@ -546,18 +592,25 @@ function applyAgente(data) {
 }
 
 async function loadAgente() {
+  const current = requests.agente()
   loading.agente = true
+  errors.agente = ''
   try {
     const r = await coordinadorService.getAgenteCurso(cursoId.value)
+    if (!current()) return
     applyAgente(r.agente)
+    agenteDraft.accept()
   } catch (e) {
+    if (!current()) return
+    errors.agente = 'No se pudo cargar la configuración del agente'
     notifyError(e, 'No se pudo cargar la configuración del agente')
   } finally {
-    loading.agente = false
+    if (current()) loading.agente = false
   }
 }
 
 async function saveAgente() {
+  if (busy.agente) return
   busy.agente = true
   try {
     const r = await coordinadorService.updateAgenteCurso(cursoId.value, {
@@ -566,6 +619,7 @@ async function saveAgente() {
       extender_conocimiento: agente.extender_conocimiento,
     })
     applyAgente(r.agente)
+    agenteDraft.accept()
     notify('Configuración del agente guardada')
   } catch (e) {
     notifyError(e, 'No se pudo guardar la configuración del agente')
@@ -575,32 +629,43 @@ async function saveAgente() {
 }
 
 async function toggleModo(modo, value) {
+  if (busy.agente) return
+  busy.agente = true
   const previous = { ...modos }
   modos[modo] = value
   try {
     const r = await coordinadorService.updateAgenteCurso(cursoId.value, {
       modos_permitidos: MODOS.map((m) => m.key).filter((k) => modos[k]),
     })
-    applyAgente(r.agente)
+    for (const option of MODOS) modos[option.key] = r.agente.modos_permitidos.includes(option.key)
   } catch (e) {
     Object.assign(modos, previous)
     notifyError(e, 'No se pudo actualizar la opción')
+  } finally {
+    busy.agente = false
   }
 }
 
 /* ---------- Base de conocimiento ---------- */
 async function loadConocimiento() {
+  const current = requests.conocimiento()
   loading.conocimiento = true
+  errors.conocimiento = ''
   try {
-    conocimiento.value = await coordinadorService.getConocimientoCurso(cursoId.value)
+    const result = await coordinadorService.getConocimientoCurso(cursoId.value)
+    if (!current()) return
+    conocimiento.value = result
   } catch (e) {
+    if (!current()) return
+    errors.conocimiento = 'No se pudo cargar el estado de la base de conocimiento'
     notifyError(e, 'No se pudo cargar el estado de la base de conocimiento')
   } finally {
-    loading.conocimiento = false
+    if (current()) loading.conocimiento = false
   }
 }
 
 async function retryConocimiento(job) {
+  if (retryingJobId.value) return
   retryingJobId.value = job.id
   try {
     await coordinadorService.retryConocimientoCurso(cursoId.value, job.id)
@@ -614,7 +679,8 @@ async function retryConocimiento(job) {
 }
 
 async function removeDocumento(filename) {
-  if (!window.confirm(`¿Quitar "${filename}" de la base de conocimiento? Esta acción eliminará sus vectores de Pinecone.`)) return
+  if (deletingDocument.value || busy.vaciar) return
+  if (!await confirmAction({ title: 'Quitar documento', message: `¿Quitar "${filename}" del material disponible del curso?`, confirmText: 'Quitar documento', destructive: true })) return
   deletingDocument.value = filename
   try {
     await coordinadorService.operarConocimientoCurso(cursoId.value, { action: 'delete_document', archivo: filename })
@@ -628,7 +694,8 @@ async function removeDocumento(filename) {
 }
 
 async function clearConocimiento() {
-  if (!window.confirm('¿Vaciar toda la base de conocimiento de este curso? Esta acción eliminará todos los vectores de Pinecone.')) return
+  if (busy.vaciar || deletingDocument.value) return
+  if (!await confirmAction({ title: 'Vaciar base de conocimiento', message: 'Se eliminará todo el material indexado de este curso. No se puede deshacer.', confirmText: 'Vaciar base', destructive: true })) return
   busy.vaciar = true
   try {
     await coordinadorService.operarConocimientoCurso(cursoId.value, { action: 'clear_course' })
@@ -642,8 +709,11 @@ async function clearConocimiento() {
 }
 
 async function uploadConocimiento() {
+  if (busy.subida) return
   const files = conocimientoFiles.value || []
   if (!files.length) return notify('Selecciona al menos un archivo PDF', true)
+  if (files.length > 10) return notify('Selecciona como máximo 10 PDF por carga', true)
+  if (files.some(file => file.size > 20 * 1024 * 1024)) return notify('Cada PDF debe pesar como máximo 20 MiB', true)
   const invalid = files.find((file) => !file.name.toLowerCase().endsWith('.pdf'))
   if (invalid) return notify(`"${invalid.name}" no es un PDF válido`, true)
 
@@ -683,7 +753,7 @@ watch(cursoId, (id) => {
 
 .detail-tabs {
   max-width: 100%;
-  border-bottom: 1px solid rgba(var(--tutoria-green-rgb), 0.16);
+  border-bottom: 1px solid var(--tutoria-border);
 }
 
 .alumnos-table {
@@ -692,22 +762,22 @@ watch(cursoId, (id) => {
 
 .toggle-row {
   padding: 10px 12px;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.2);
+  border: 1px solid var(--tutoria-border);
   border-radius: 12px;
-  background: rgba(var(--tutoria-green-rgb), 0.08);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .knowledge-box {
   padding: 12px;
-  border: 1px solid rgba(var(--tutoria-green-rgb), 0.16);
+  border: 1px solid var(--tutoria-border);
   border-radius: 12px;
-  background: rgba(var(--tutoria-green-rgb), 0.06);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .knowledge-documents {
   max-height: 220px;
   overflow: auto;
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--tutoria-nav-active-bg);
 }
 
 .knowledge-document {
@@ -719,7 +789,7 @@ watch(cursoId, (id) => {
 }
 
 .knowledge-document + .knowledge-document {
-  border-top: 1px solid rgba(var(--tutoria-green-rgb), 0.12);
+  border-top: 1px solid var(--tutoria-border);
 }
 
 .knowledge-document > div {
