@@ -46,9 +46,46 @@
     },
     {
       "parameters": {
-        "jsonMode": "expressionData",
-        "jsonData": "={{ $json.pageContent }}",
-        "options": {}
+        "dataType": "binary",
+        "binaryMode": "specificField",
+        "loader": "pdfLoader",
+        "binaryDataKey": "data",
+        "textSplittingMode": "custom",
+        "options": {
+          "splitPages": true,
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "archivo",
+                "value": "={{ $json.metadata.sourceFile }}"
+              },
+              {
+                "name": "sourceFile",
+                "value": "={{ $json.metadata.sourceFile }}"
+              },
+              {
+                "name": "institucion_id",
+                "value": "={{ $json.metadata.institucion_id }}"
+              },
+              {
+                "name": "curso_id",
+                "value": "={{ $json.metadata.curso_id }}"
+              },
+              {
+                "name": "coordinador_id",
+                "value": "={{ $json.metadata.coordinador_id }}"
+              },
+              {
+                "name": "namespace",
+                "value": "={{ $json.metadata.namespace }}"
+              },
+              {
+                "name": "uploadedAt",
+                "value": "={{ $json.metadata.uploadedAt }}"
+              }
+            ]
+          }
+        }
       },
       "id": "ba3b777c-9071-44d6-96d1-be734d0fa004",
       "name": "Default Data Loader",
@@ -61,6 +98,7 @@
     },
     {
       "parameters": {
+        "model": "text-embedding-3-small",
         "options": {
           "dimensions": 512
         }
@@ -110,7 +148,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Enriquecimiento de Metadatos por Archivo para LangChain y Vectorización\nconst results = [];\nconst timestamp = new Date().toISOString();\nconst archivosConError = [];\n\nfor (const item of $input.all()) {\n  const textContent = item.json.data || item.json.text || '';\n  const fileName = $('Normalizar Múltiples Binarios').first().json.fileName ;\n  const institucionId = $('Normalizar Múltiples Binarios').first().json.institucion_id ;\n  const cursoId = $('Normalizar Múltiples Binarios').first().json.curso_id ;\n  const coordinadorId = $('Normalizar Múltiples Binarios').first().json.coordinador_id ;\n\n  // Detección granular: Si un archivo es escaneado o sin texto, se reporta sin tumbar los demás\n  if (!textContent.trim()) {\n    archivosConError.push(fileName);\n    continue;\n  }\n\n  const namespace = `inst_${institucionId}_curso_${cursoId}`;\n\n  results.push({\n    json: {\n      pageContent: textContent,\n      metadata: {\n        sourceFile: fileName,\n        namespace: namespace,\n        institucion_id: institucionId,\n        curso_id: cursoId,\n        coordinador_id: coordinadorId,\n        uploadedAt: timestamp\n      },\n      // Pasamos el binario intacto para el respaldo en Drive en el siguiente paso\n      hasError: false\n    },\n    binary: item.binary\n  });\n}\n\nif (results.length === 0) {\n  throw new Error(`[Error 422 de Lectura]: Ninguno de los PDFs subidos contenía texto legible. Archivos con fallo de lectura/OCR: [${archivosConError.join(', ')}]`);\n}\n\nreturn results;"
+        "jsCode": "const normalizedFiles = $('Normalizar Múltiples Binarios').all();\nconst extractedFiles = $input.all();\nif (extractedFiles.length !== normalizedFiles.length) {\n  throw new Error('No se pudo asociar cada PDF con sus metadatos de origen.');\n}\n\nconst results = [];\nconst archivosConError = [];\nconst timestamp = new Date().toISOString();\n\nfor (let index = 0; index < extractedFiles.length; index += 1) {\n  const item = extractedFiles[index];\n  const source = normalizedFiles[index].json;\n  const fileName = String(source.fileName || 'documento.pdf');\n  const textContent = String(item.json.data || item.json.text || '');\n\n  if (!textContent.trim()) {\n    archivosConError.push(fileName);\n    continue;\n  }\n\n  const institucionId = String(source.institucion_id);\n  const cursoId = String(source.curso_id);\n  const namespace = 'inst_' + institucionId + '_curso_' + cursoId;\n\n  results.push({\n    json: {\n      pageContent: textContent,\n      metadata: {\n        sourceFile: fileName,\n        archivo: fileName,\n        namespace: namespace,\n        institucion_id: institucionId,\n        curso_id: cursoId,\n        coordinador_id: String(source.coordinador_id || ''),\n        uploadedAt: timestamp\n      }\n    },\n    binary: item.binary\n  });\n}\n\nif (archivosConError.length) {\n  throw new Error('PDFs sin texto extraíble (OCR requerido para documentos escaneados): ' + archivosConError.join(', '));\n}\nif (!results.length) {\n  throw new Error('No se pudo extraer texto de los PDFs recibidos.');\n}\n\nreturn results;"
       },
       "id": "6ad2e906-ceda-4801-81a3-9d9c6d74c680",
       "name": "Enriquecer Metadatos y Aislamiento",
@@ -248,7 +286,8 @@
     },
     {
       "parameters": {
-        "chunkOverlap": 24,
+        "chunkSize": 1000,
+        "chunkOverlap": 150,
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
@@ -324,7 +363,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// 1. Tomamos los resultados que acaban de salir del nodo de Google Drive\nconst driveResults = $input.all();\nif (driveResults.length === 0) {\n  throw new Error(\"No se recibieron archivos desde el nodo anterior de Google Drive.\");\n}\n\n// 2. Extraemos los datos directamente de las propiedades heredadas en el primer ítem del input\n// (Así evitamos el error de 'hasn't been executed' al no depender de búsquedas hacia atrás)\nconst firstItemJson = driveResults[0].json;\nconst institucionId = firstItemJson.institucion_id || 'no_especificado';\nconst cursoId = firstItemJson.curso_id || 'no_especificado';\nconst coordinadorId = firstItemJson.coordinador_id || 'no_especificado';\nconst targetFolderName = firstItemJson.targetFolderName || `INST_${institucionId}`;\nconst targetFolderId = firstItemJson.targetFolderId || '';\n\n// 3. Obtenemos metadatos secundarios de forma segura (con fallback si no se ejecutaron en la misma sesión)\nlet namespace = `inst_${institucionId}_curso_${cursoId}`;\nlet totalChunks = 0;\n\ntry {\n  const metaNode = $('Enriquecer Metadatos y Aislamiento').first();\n  if (metaNode && metaNode.json && metaNode.json.metadata) {\n    namespace = metaNode.json.metadata.namespace;\n  }\n} catch (e) {\n  // Usará el namespace por defecto generado arriba\n}\n\ntry {\n  const pineconeResults = $('Pinecone: Insertar Vectores Aislados').all();\n  totalChunks = pineconeResults ? pineconeResults.length : 0;\n} catch (e) {\n  // Si se ejecuta de forma aislada sin memoria de Pinecone, pondrá 0\n}\n\n// 4. Mapeamos los archivos guardados en Google Drive\nconst archivosRespaldados = driveResults.map(item => ({\n  fileId: item.json.id,\n  fileName: item.json.name || item.json.fileName,\n  webViewLink: item.json.webViewLink || ''\n}));\n\n// 5. Retornamos la estructura limpia para el Webhook\nreturn [{\n  json: {\n    success: true,\n    status: 200,\n    message: `Materiales vectorizados y respaldados correctamente en la carpeta '${targetFolderName}'.`,\n    data: {\n      institucion_id: institucionId,\n      curso_id: cursoId,\n      coordinador_id: coordinadorId,\n      pinecone: {\n        namespace: namespace,\n        index: \"blindev-web\",\n        total_pdfs_vectorizados: driveResults.length,\n        total_chunks_generados: totalChunks\n      },\n      googleDriveBackup: {\n        folderName: targetFolderName,\n        folderId: targetFolderId,\n        total_archivos_guardados: archivosRespaldados.length,\n        archivos: archivosRespaldados\n      }\n    }\n  }\n}];"
+        "jsCode": "const driveResults = $input.all();\nconst indexedFiles = $('Enriquecer Metadatos y Aislamiento').all();\nconst linkedFiles = $('Vincular PDFs con ID de Carpeta').all();\nif (!driveResults.length || !indexedFiles.length || !linkedFiles.length) {\n  throw new Error('No se recibieron los resultados de respaldo e indexación esperados.');\n}\nif (driveResults.length !== indexedFiles.length || linkedFiles.length !== indexedFiles.length) {\n  throw new Error('La cantidad de PDFs respaldados no coincide con los documentos indexados.');\n}\n\nconst firstMetadata = indexedFiles[0].json.metadata;\nif (!firstMetadata) {\n  throw new Error('No se encontraron metadatos para construir la respuesta de indexación.');\n}\n\nconst targetFolderName = linkedFiles[0].json.targetFolderName;\nconst targetFolderId = linkedFiles[0].json.targetFolderId;\nconst archivosRespaldados = driveResults.map((item, index) => ({\n  fileId: item.json.id,\n  fileName: item.json.name || indexedFiles[index].json.metadata.sourceFile,\n  webViewLink: item.json.webViewLink || ''\n}));\n\nreturn [{\n  json: {\n    success: true,\n    status: 200,\n    message: 'Materiales vectorizados y respaldados correctamente en la carpeta ' + targetFolderName + '.',\n    data: {\n      institucion_id: firstMetadata.institucion_id,\n      curso_id: firstMetadata.curso_id,\n      coordinador_id: firstMetadata.coordinador_id,\n      archivos_procesados: indexedFiles.length,\n      pinecone: {\n        namespace: firstMetadata.namespace,\n        index: 'tutoria-app',\n        total_pdfs_vectorizados: indexedFiles.length\n      },\n      googleDriveBackup: {\n        folderName: targetFolderName,\n        folderId: targetFolderId,\n        total_archivos_guardados: archivosRespaldados.length,\n        archivos: archivosRespaldados\n      }\n    }\n  }\n}];"
       },
       "id": "7dbfec4b-042f-42b0-b1ec-a3cb9532ec7a",
       "name": "Construir Respuesta Estructurada1",

@@ -24,7 +24,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\n\n// Validar si la entrada está vacía o si Pinecone no devolvió datos válidos\nif (!items || items.length === 0 || !items[0].json) {\n  return [{ json: { context: 'No se encontró material relevante sobre el tema en la base de datos.', citations: [] } }];\n}\n\nconst sources = items.map(function(i) {\n  const doc = i.json.document || i.json;\n  const text = doc.pageContent || doc.text || i.json.pageContent || i.json.text || '';\n  const metadata = doc.metadata || i.json.metadata || {};\n\n  return {\n    text: text,\n    source: metadata.archivo || metadata.filename || metadata.source || 'Material del curso',\n    page: metadata.pagina || metadata.page || null\n  };\n}).filter(function(s) { \n  return typeof s.text === 'string' && s.text.trim().length > 0; \n});\n\n// Fallback seguro si tras filtrar no hay texto extraíble\nif (sources.length === 0) {\n  return [{ json: { context: 'No se encontró material relevante sobre el tema en la base de datos.', citations: [] } }];\n}\n\nconst formattedText = sources.map(function(s, idx) {\n  const pageInfo = s.page ? ' (Pág. ' + s.page + ')' : '';\n  return '[' + (idx + 1) + '] Fuente: ' + s.source + pageInfo + '\\n' + s.text;\n}).join('\\n\\n---\\n\\n');\n\nconst citations = sources.map(function(s) {\n  return { archivo: s.source, pagina: s.page };\n});\n\nreturn [{ json: { context: formattedText, citations: citations } }];"
+        "jsCode": "const items = $input.all();\nconst noContext = 'No se encontró material relevante sobre el tema en la base de datos.';\nif (!items.length || !items[0].json) {\n  return [{ json: { context: noContext, citations: [] } }];\n}\n\nconst sources = [];\nconst seenChunks = new Set();\nfor (const item of items) {\n  const doc = item.json.document || item.json;\n  const rawText = doc.pageContent || doc.text || item.json.pageContent || item.json.text || '';\n  const text = typeof rawText === 'string' ? rawText.trim() : '';\n  const metadata = doc.metadata || item.json.metadata || {};\n  const location = metadata.loc && typeof metadata.loc === 'object' ? metadata.loc : {};\n  const source = metadata.sourceFile || metadata.archivo || metadata.filename || metadata.source || 'Material del curso';\n  const page = metadata.pagina || metadata.page || metadata.pageNumber || location.pageNumber || null;\n\n  if (!text) continue;\n  const chunkKey = JSON.stringify([source, page, text]);\n  if (seenChunks.has(chunkKey)) continue;\n  seenChunks.add(chunkKey);\n  sources.push({ text, source, page });\n}\n\nif (!sources.length) {\n  return [{ json: { context: noContext, citations: [] } }];\n}\n\nconst citationNumbers = new Map();\nconst citations = [];\nconst formattedText = sources.map(function(source) {\n  const citationKey = JSON.stringify([source.source, source.page]);\n  let citationNumber = citationNumbers.get(citationKey);\n  if (!citationNumber) {\n    citationNumber = citations.length + 1;\n    citationNumbers.set(citationKey, citationNumber);\n    citations.push({ archivo: source.source, pagina: source.page });\n  }\n  const pageInfo = source.page ? ' (Pág. ' + source.page + ')' : '';\n  return '[' + citationNumber + '] Fuente: ' + source.source + pageInfo + '\\n' + source.text;\n}).join('\\n\\n---\\n\\n');\n\nreturn [{ json: { context: formattedText, citations: citations } }];"
       },
       "id": "34b6675a-a524-400d-a341-9058040dfe91",
       "name": "Formatear Contexto",
@@ -61,7 +61,8 @@
           "cachedResultName": "tutoria-app"
         },
         "prompt": "={{ $json.query }}",
-        "topK": 3,
+        "topK": 8,
+        "includeDocumentMetadata": true,
         "options": {
           "pineconeNamespace": "={{ $json.namespace }}"
         }

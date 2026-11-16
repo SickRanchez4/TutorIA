@@ -288,6 +288,50 @@
         </v-tabs>
         <v-card-text class="pt-5">
           <v-form v-if="alumnoDialogTab === 'add'" class="d-flex flex-column ga-3" :disabled="busy.alumno" @submit.prevent="addEstudiante">
+            <div class="d-flex flex-column ga-2">
+              <div class="text-subtitle-1 font-weight-medium">Buscar alumno registrado</div>
+              <v-text-field
+                v-model="institutionStudentSearch"
+                label="Buscar por nombre o correo"
+                prepend-inner-icon="mdi-magnify"
+                clearable
+                :loading="searchingInstitutionStudents"
+                hint="Escribe al menos 2 caracteres."
+                persistent-hint
+              />
+              <v-alert v-if="institutionSearchError" type="error" variant="tonal" density="compact">
+                {{ institutionSearchError }}
+              </v-alert>
+              <v-list v-else-if="availableInstitutionStudents.length" density="compact" class="rounded-lg">
+                <v-list-item
+                  v-for="student in availableInstitutionStudents"
+                  :key="student.id"
+                  :title="studentDisplayName(student)"
+                  :subtitle="student.is_active ? student.email : `${student.email} · Cuenta inactiva`"
+                >
+                  <template #append>
+                    <v-btn
+                      size="small"
+                      color="primary"
+                      variant="tonal"
+                      :disabled="busy.alumno || !student.is_active"
+                      @click.stop="enrollExistingStudent(student)"
+                    >
+                      Inscribir
+                    </v-btn>
+                  </template>
+                </v-list-item>
+              </v-list>
+              <div
+                v-else-if="institutionStudentSearch.trim().length >= 2 && !searchingInstitutionStudents"
+                class="text-body-small text-subtle"
+              >
+                No hay alumnos coincidentes disponibles para inscribir.
+              </div>
+            </div>
+
+            <v-divider class="my-1" />
+            <div class="text-subtitle-1 font-weight-medium">Registrar un alumno nuevo</div>
             <v-text-field v-model="newAlumno.email" label="Email" type="email" />
             <v-text-field v-model="newAlumno.first_name" label="Nombre" />
             <v-text-field v-model="newAlumno.last_name" label="Apellido" />
@@ -398,6 +442,10 @@ const showAlumnoDialog = ref(false)
 const alumnoDialogTab = ref('add')
 const newAlumno = reactive(emptyAlumno())
 const alumnosExcelFile = ref(null)
+const institutionStudentSearch = ref('')
+const institutionStudents = ref([])
+const searchingInstitutionStudents = ref(false)
+const institutionSearchError = ref('')
 
 const agente = reactive({ system_prompt: '', temperatura: 0.2, extender_conocimiento: false, modos_permitidos: [] })
 const modos = reactive({ chat: true, practicar: true, recursos: true })
@@ -409,7 +457,13 @@ const deletingDocument = ref('')
 const loading = reactive({ curso: true, alumnos: true, agente: true, conocimiento: true })
 const busy = reactive({ datos: false, estado: false, eliminar: false, alumno: false, agente: false, subida: false, vaciar: false })
 const errors = reactive({ alumnos: '', agente: '', conocimiento: '' })
-const requests = { curso: useRequestSequence(), alumnos: useRequestSequence(), agente: useRequestSequence(), conocimiento: useRequestSequence() }
+const requests = {
+  curso: useRequestSequence(),
+  alumnos: useRequestSequence(),
+  alumnosInstitucion: useRequestSequence(),
+  agente: useRequestSequence(),
+  conocimiento: useRequestSequence(),
+}
 const cursoDraft = useFormDraft(() => editCurso, () => editingDatos.value, () => busy.datos || busy.estado || busy.eliminar)
 const agenteDraft = useFormDraft(() => agente, () => !loading.agente && !errors.agente, () => busy.agente || busy.subida || busy.vaciar || Boolean(deletingDocument.value || retryingJobId.value))
 const alumnoDraft = useFormDraft(() => newAlumno, () => showAlumnoDialog.value, () => busy.alumno || Boolean(removingId.value))
@@ -419,6 +473,40 @@ const studentSearch = ref('')
 const filteredStudents = computed(() => estudiantes.value.filter(student => normalizeSearch(`${student.full_name} ${student.email}`).includes(normalizeSearch(studentSearch.value))))
 const studentPager = usePagination(filteredStudents)
 watch(studentSearch, () => { studentPager.state.page = 1 })
+const availableInstitutionStudents = computed(() => {
+  const enrolledIds = new Set(estudiantes.value.map(student => String(student.user_id)))
+  return institutionStudents.value.filter(student => !enrolledIds.has(String(student.id)))
+})
+
+watch(
+  [showAlumnoDialog, alumnoDialogTab, institutionStudentSearch, cursoId],
+  ([isOpen, activeTab, query], _previous, onCleanup) => {
+    const current = requests.alumnosInstitucion()
+    const normalizedQuery = query.trim()
+    institutionStudents.value = []
+    institutionSearchError.value = ''
+    searchingInstitutionStudents.value = false
+
+    if (!isOpen || activeTab !== 'add' || normalizedQuery.length < 2) return
+
+    const timer = setTimeout(async () => {
+      searchingInstitutionStudents.value = true
+      try {
+        const response = await coordinadorService.searchAlumnos(normalizedQuery)
+        if (!current()) return
+        institutionStudents.value = response.estudiantes || []
+      } catch (error) {
+        if (!current()) return
+        institutionSearchError.value = 'No se pudo buscar alumnos en la institución.'
+        notifyError(error, 'No se pudo buscar alumnos en la institución')
+      } finally {
+        if (current()) searchingInstitutionStudents.value = false
+      }
+    }, 300)
+
+    onCleanup(() => clearTimeout(timer))
+  },
+)
 
 const latestFailedJob = computed(() => conocimiento.value?.trabajos?.find((job) => ['failed', 'unknown'].includes(job.estado)) || null)
 const knowledgeStatus = computed(() => {
@@ -525,7 +613,26 @@ const refreshAlumnos = () => Promise.all([loadEstudiantes(), loadCurso()])
 
 function openAlumnoDialog() {
   alumnoDialogTab.value = 'add'
+  institutionStudentSearch.value = ''
   showAlumnoDialog.value = true
+}
+
+function studentDisplayName(student) {
+  return student.full_name || [student.first_name, student.last_name].filter(Boolean).join(' ') || student.email
+}
+
+async function enrollExistingStudent(student) {
+  if (busy.alumno || !student.is_active) return
+  busy.alumno = true
+  try {
+    await coordinadorService.addEstudianteCurso(cursoId.value, { email: student.email })
+    await refreshAlumnos()
+    notify('Alumno inscrito')
+  } catch (error) {
+    notifyError(error, 'No se pudo inscribir al alumno')
+  } finally {
+    busy.alumno = false
+  }
 }
 
 async function addEstudiante() {
