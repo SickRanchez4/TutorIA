@@ -1,9 +1,9 @@
 # Registro de pruebas — SPEC-002
 
-**Estado:** entregables T02–T05 de C0 completados y refactor frontend previo a C1 incorporado; requisitos UI/UX **no ejecutados integralmente**. El lint baseline falló; lint/build posteriores fueron satisfactorios con el aviso previo de chunk. Revisión visual y Excel solo con API simulada, sin aprobación de los requisitos.
-**Actualización documental:** 2026-11-14; plan y paleta aprobados explícitamente el 2026-10-31, T01 respaldada y C0-G01 resuelto. C1–C5 siguen pendientes de completar y verificar. Se preservan reportes y resultados históricos; [contexto del proyecto](../../project-context.md).
-**Versión de producto inspeccionada:** `6b7b79bbfdbea5614ffe369330e55905fffe3c98`, sin cambios de producto al iniciar C0.  
-**Fecha de trabajo local:** 2026-09-30 (capturas posteriores a medianoche UTC se identifican con su offset).  
+**Estado vigente:** SPEC-002 funcionalmente completada con C1–C4 y C5 mínimo acordado, incluida muestra propia de Edge; **sin certificación integral**. T87 y T89–T98 diferidas. Lector real y partes extensas de zoom/móvil no ejecutadas, no bloqueantes.
+**Actualización documental:** 2026-11-15. [Entrega actual](#7-entrega-funcional-acotada-2026-11-15) y [evidencia](evidence.md#cierre-funcional-acotado-de-spec-002-2026-11-15); se preserva la historia C0/refactor y el [contexto del proyecto](../../project-context.md).
+**Versión histórica C0:** `6b7b79bbfdbea5614ffe369330e55905fffe3c98`, sin cambios de producto al iniciar C0. Versión de entrega actual: `565dd39` más cambios locales.
+**Fecha histórica C0:** 2026-09-30 (capturas posteriores a medianoche UTC se identifican con su offset).
 **Referencias:** [spec](spec.md), [plan](plan.md), [tareas](tasks.md), [inventario T02](inventory.md), [entorno T03](evidence.md#entorno-t03-2026-09-30).
 
 ## 1. Alcance y significado del resultado
@@ -42,6 +42,8 @@ Los [casos y matriz T04](cases.md) detallan precondiciones, pasos y aserciones d
 | Limpieza | Journal propio, recuperación/residuos y comprobación posterior; o no aplicable sin datos |
 
 ## 4. Checklist individual inicial
+
+**Instantánea histórica de C0:** la tabla siguiente se conserva como registro inicial; sus pendientes no describen el código vigente. La cobertura seleccionada posterior está en §7 y no convierte cada requisito en aprobación integral.
 
 Cada fila se actualiza después de ejecutar los casos correspondientes. Las tareas de documentación C0 no aprueban RF-20 completo, que también exige catálogo construido y trazabilidad de evidencias posteriores.
 
@@ -108,3 +110,25 @@ Los hallazgos de lectura no se convierten en resultados de sistema ni autorizan 
 **Limpieza C0:** no aplica a datos de negocio porque no se crearon ni consultaron; no reutilizar journals históricos. La salida de build es artefacto local de compilación, no evidencia de persistencia/API.
 
 **Cierre documental C0:** [validación histórica de enlaces, estados, casos e integridad](evidence.md#validación-documental-de-c0) satisfactoria. T02–T05 completadas en C0; T01 respaldada posteriormente el 2026-10-31. C1–C5 pendientes; lint previo no reparado, y los 28 requisitos siguen no ejecutados en su comportamiento UI/UX.
+
+## 7. Entrega funcional acotada (2026-11-15)
+
+**Decisión:** reutilizar lo ya comprobado; terminar C1–C4, T80–T86 mínimos y T88 en Edge. Enmienda aprobada para Claro verde muy claro/blanco, Oscuro verde suave y excepción petróleo solo en login Oscuro; T85 semántica sin lector real. [Tareas adaptadas](tasks.md) y [plan vigente](plan.md).
+
+**Resultado de ejecución seleccionada:** once identificadores con `PASS` (VM/runtime Vue y Edge `157.0.4341.46`), registrados con esperado/obtenido/modalidad en [evidencia de cierre](evidence.md#cierre-funcional-acotado-de-spec-002-2026-11-15). Lint/build finales código 0; solo aviso previo de chunk. API interceptada, no datos ni proveedores reales.
+
+| Cobertura actual | Requisitos relacionados | Resultado / límite |
+|---|---|---|
+| Tokens, selector, prepaint, sistema/pestañas y storage bloqueado | RF-1–4; RNF-2 | Muestra satisfactoria; estética no se presenta como emoción probada |
+| Shell/navegación, diálogo/dirty, perfil, estados/errores y limpieza de sesión | RF-5–10/18; RNF-6 | Integración seleccionada satisfactoria, sin todas las permutaciones ni autorización backend real |
+| Listados/retorno, tutor, PDF/Excel seguros, institución y analíticas | RF-11–13/17 | Patrón y casos límite seleccionados satisfactorios; no importación/indexación/persistencia real |
+| Historial/borrador, IME/imágenes, dictado doble, Mermaid y agenda completa | RF-14–17 | Muestra satisfactoria; audio real y alternativa semántica ausente de origen no acreditados |
+| Contraste, controles/foco semánticos y responsive en Edge | RF-19; RNF-3/5 | Ratios y viewports de muestra satisfactorios; sin lector, zoom completo ni otros navegadores/dispositivos |
+| Catálogo/trazabilidad y construcción | RF-20; RNF-1/2/8 | Entregables mínimos completados; no auditoría extensa ni certificación T98 |
+| Rendimiento/ciclos y regresión real | RNF-4/7 y certificación integral | **No ejecutados**, diferidos |
+
+**Hallazgos históricos conciliados:** C0-K03 ayuda `.xlsx`; C0-K04 resumen sin filas/razones privadas; C0-K05 temas/tokens; C0-K06 cuatro MIME/4 MiB implementados y comprobados en la muestra actual. C0-B01 sigue resuelto; C0-B02 conserva aviso. C0-K01/S-2 real, C0-K02 y carencias de lector/móviles/rendimiento no se cierran mediante mocks.
+
+**No ejecutado/futuro:** T87 (Chrome integral), T89–T91 (Firefox/Android/iOS), T92–T93 (rendimiento/limpieza extensa), T94–T98 (regresión integral, cierre/certificación originales). Se conserva su casilla vacía. Partes de lector real de T85 y zoom/dispositivos completos de T86 son futuras, aunque la muestra mínima adaptada esté completada.
+
+**Veredicto de entrega:** 87 tareas completadas en alcance adaptado y 11 diferidas; SPEC-002 funcionalmente cerrada para continuar SPEC-003. **No** se declara aprobación completa de los 20 RF/8 RNF ni ejecución de toda la matriz original. Preparación C0 y evidencia de paletas anteriores siguen históricas.

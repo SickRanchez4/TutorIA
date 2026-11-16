@@ -1,5 +1,7 @@
 # SPEC-002 — Interfaz, experiencia de usuario y sistema visual de TutorIA
 
+**Ajuste posterior vigente — 2026-11-15:** por petición expresa, se retira también el selector del login. Esta pantalla usa siempre Oscuro/petróleo, independientemente de Sistema o de la preferencia guardada; no la sobrescribe. El selector queda únicamente en Perfil de cada rol. Esta decisión sustituye la ubicación y variante de login de la enmienda anterior; la evidencia previa permanece histórica.
+
 ## 1. Contexto y objetivo
 
 **Estado:** aprobado.  
@@ -7,6 +9,8 @@
 **Baseline:** [Spec-000 — MVP](../spec-000-mvp/Spec-000-mvp.md).  
 **Gobernanza:** [Constitución](../constitution.md).  
 **Antecedentes de verificación:** [registro de SPEC-001](../spec-001-tests/test.md) y [regresión proporcional](../../../testing/REGRESSION.md).
+
+**Actualización de alcance aprobada — 2026-11-15:** el responsable solicita completar funcionalmente C1–C4 reutilizando código y evidencia existentes, con verificación mínima T80–T86 y recorrido propio en Edge T88. T87, T89–T98 quedan diferidas, no ejecutadas por esta decisión. Para T85 se aprueba revisar semántica accesible en Edge; el recorrido con lector real queda no ejecutado y no bloqueante. Se aprueban Claro verde muy claro/blanco y Oscuro verde suave, conservando el login petróleo solo en Oscuro como excepción explícita a RF-1. Por ajuste posterior del responsable, el selector se sitúa en Perfil de los tres roles, no en la navegación lateral; también permanece en login. No se reconstruye la barra superior eliminada. El catálogo se integra en el plan existente, sin documento nuevo. Esta entrega acotada permite continuar SPEC-003, pero no declara conformidad WCAG integral, compatibilidad multiplataforma, rendimiento medido ni integración real con proveedores. Las exigencias históricas siguientes se conservan como referencia; el alcance de evaluación vigente es esta decisión. PostgreSQL 18.x sustituye la mención histórica de SQL Server en RNF-1 conforme a SPEC-008.
 
 TutorIA necesita una experiencia coherente en toda su interfaz: no solo cambiar colores, sino unificar navegación, jerarquía, formularios, estados, accesibilidad y comportamiento en diferentes dispositivos. La aplicación debe permitir elegir un tema claro u oscuro y sus componentes visuales deben tener responsabilidades delimitadas, contratos explícitos y reutilización real, sin construir un framework propio.
 

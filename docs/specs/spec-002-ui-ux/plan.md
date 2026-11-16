@@ -2,7 +2,7 @@
 
 ## 1. Estado, objetivo y alcance
 
-**Estado:** aprobado por el responsable, incluida la paleta de §3.1.  
+**Estado:** cierre funcional acotado de C1–C4; C5 reducido por decisión del responsable el 2026-11-15. No supone certificación integral ni ejecución de T98.
 **Fecha:** 2026-09-30.  
 **Fecha de aprobación del plan y paleta:** 2026-10-31.  
 **Especificación:** [SPEC-002 aprobada](spec.md), con reparación de defectos funcionales previos de Excel excluida por indicación del responsable.  
@@ -37,6 +37,37 @@ La dirección visual actualizada por el responsable es **verde y blanco, más lu
 
 ## 2. Base técnica comprobada y estrategia
 
+### Entrega vigente — 2026-11-15
+
+Se reutilizan el refactor y su evidencia. La [enmienda aprobada](spec.md) establece Claro verde muy claro/blanco y Oscuro verde suave. Por ajuste posterior, login usa siempre Oscuro/petróleo sin selector ni escritura de la preferencia global. El selector está exclusivamente en Perfil de todos los roles, no en la navegación lateral; no se reconstruye la barra superior eliminada.
+
+- **C1–C4:** funcionalidades completadas sobre los contenedores existentes, con comprobaciones agrupadas de integración frontend en Edge y respuestas HTTP controladas. No se duplica cada CRUD ni se repiten campañas históricas sin impacto.
+- **T80–T86:** catálogo aquí, revisión mínima de composición/contratos, lint/build, muestra de contraste, teclado, semántica accesible y adaptación. T85 **no incluye ejecución con lector real**; T86 no acredita texto 200 %, reflow 400 % ni teclado virtual real.
+- **T88:** ejecución propia de Edge Windows, no inferida de Chrome. Depende de T82 y las verificaciones mínimas, no de T87.
+- **Diferidas sin ejecución:** T87, T89–T91, T92–T93 y T94–T98. Incluyen otros navegadores/dispositivos, medidas de rendimiento/20 ciclos, regresión real, recuperación de datos de pruebas reales y veredicto integral. S-2 real permanece pendiente.
+- La construcción se comprueba en **build servido**; no se duplica el ensayo de primer pintado en desarrollo. La evidencia histórica sigue separada de esta entrega. No se declaran aprobados globalmente los 20 RF/8 RNF.
+
+#### Catálogo mínimo de implementación (T80)
+
+Los nombres previstos describían responsabilidades, no la obligación de añadir archivos de un solo uso:
+
+| Responsabilidad / implementación real | Contrato y ejemplo de uso |
+|---|---|
+| Shell: [RoleLayout](../../../frontend/src/components/RoleLayout.vue), [RoleSidebar](../../../frontend/src/components/RoleSidebar.vue) | `role/items/active/toast`, slot de contenido y evento `select`; usado por los tres roles. Skip link, título/foco y drawer móvil con fondo inerte/Tab/Escape. Sin segundo AppShell |
+| Apariencia: [AppearanceSelector](../../../frontend/src/components/AppearanceSelector.vue) | `modelValue/compact` y `update:modelValue`; ProfilePanel compartido. El controlador temprano, no el componente, gestiona Sistema/storage; login fija tema local Oscuro |
+| Encabezados/indicadores: [PageHeader](../../../frontend/src/components/PageHeader.vue), [StatCard](../../../frontend/src/components/StatCard.vue) | Título/acciones y `label/value/icon`; cursos e institución. Se conservan tipografía, radios y composición existentes |
+| Regiones: [RegionState](../../../frontend/src/components/RegionState.vue) y mensajes locales del listado | `loading/error/empty`, evento `retry`; cursos, cuentas, agenda y configuración. Vacío/sin coincidencias se distinguen en su contenedor; no otro AsyncState |
+| Confirmación/borradores: [ConfirmDialog](../../../frontend/src/components/ConfirmDialog.vue), [useUnsavedChanges](../../../frontend/src/composables/useUnsavedChanges.js) | Decisión antes de operar; snapshot y permanecer/descartar. Navegación se bloquea mientras hay operación pendiente. No persistencia ni promesa de cancelación HTTP |
+| Perfil: [ProfileSection](../../../frontend/src/components/ProfileSection.vue), [ProfilePanel](../../../frontend/src/components/ProfilePanel.vue) | Modelos `profile/passwords`, estados y eventos `save-profile/save-password/retry`; un contenedor compartido confirma HTTP y protege la identidad de sesión |
+| Listados/importación: [ListPagination](../../../frontend/src/components/ListPagination.vue), [ImportSummary](../../../frontend/src/components/ImportSummary.vue) | Página/tamaño/total, 10/25/50; resumen saneado recibido. Contexto de cursos solo en memoria; no filas crudas ni contraseñas en el resumen |
+| Tutor/conocimiento: [CursoDetalleView](../../../frontend/src/views/coordinador/CursoDetalleView.vue) | Formularios y bloques existentes, dirty/pending/lecturas secuenciadas. No wrappers TutorSettingsForm/KnowledgePanel de un único consumidor; mismos endpoints/payloads |
+| Conversaciones/composición: [EstudianteChat](../../../frontend/src/views/estudiante/EstudianteChat.vue) | Se mantienen los bloques de lista y compositor en su contenedor existente; controles emiten intención local, sin capas ConversationList/ChatComposer añadidas. Enter/IME, borrador, imagen y dictado explícito |
+| Diagramas/agenda: [MermaidMessage](../../../frontend/src/components/MermaidMessage.vue), [EstudianteAgenda](../../../frontend/src/views/estudiante/EstudianteAgenda.vue) | `content/active` para render local saneado; zoom, fuente y foco. Agenda de lectura con lista completa; no FullCalendar ni otro AgendaPanel |
+
+Estas equivalencias aplican a T19, T25, T59, T61, T65, T69 y T76; no afirman que existan los archivos inicialmente propuestos. Las vistas siguen coordinando servicios; los nuevos componentes visuales no incorporan HTTP o reglas institucionales.
+
+Usar los roles de [tokens.css](../../../frontend/public/tokens.css), no hexadecimales por vista. Fondo Claro `#E6F4DF`, fondo Oscuro `#405C4E`; login fijo `#182D2A`, lateral `#D2E6D8`/`#354F43`. Imágenes y documentos no se recolorean. Sombras/decoración pueden conservar transparencias; no otra paleta estructural. La tabla siguiente queda actualizada a los roles vigentes; las paletas anteriores permanecen en el historial de [evidence.md](evidence.md).
+
 La inspección de fuente confirma Vue/JavaScript, Pinia, Vue Router, Axios, Vuetify, Tailwind, Mermaid y DOMPurify; [las dependencias y scripts declarados](../../../frontend/package.json) son la referencia, no una afirmación sobre versiones realmente instaladas.
 
 | Base existente | Decisión del incremento |
@@ -57,7 +88,7 @@ El modelo será **contenedor de funcionalidad → componente específico → pat
 
 ### 3.1 Catálogo inicial
 
-La paleta siguiente fue aprobada explícitamente el 2026-10-31 como diseño. Se comprobarán las parejas efectivamente renderizadas, incluyendo opacidad, hover, disabled, foco y superposición; la aprobación de los códigos no acredita contraste en ejecución. Un ajuste que respete los roles, identidad y mínimos de contraste se registra en el catálogo, sin duplicar valores por vista.
+La dirección verde/blanca se aprobó el 2026-10-31; la tabla recoge los ajustes vigentes autorizados el 2026-11-15, sin atribuirles aprobación retroactiva. La muestra mínima de contraste está en la evidencia; no se comprobaron todas las parejas/estados/overlays. Los roles se mantienen centralizados, sin duplicar valores por vista.
 
 #### Dirección y paleta de marca
 
@@ -69,7 +100,7 @@ La paleta siguiente fue aprobada explícitamente el 2026-10-31 como diseño. Se 
 | Escala de marca | Valor propuesto | Uso permitido |
 |---|---|---|
 | `brandWhite` | #FFFFFF | Superficies Claro e identidad; no usar como texto sobre verde claro sin comprobar contraste |
-| `green50` | #F1F8F2 | Fondo claro teñido |
+| `green50` | #E6F4DF | Fondo claro teñido vigente |
 | `green100` | #E4F2E7 | Superficie secundaria clara |
 | `green200` | #D2E6D8 | Apoyo suave; nunca texto pequeño sobre blanco |
 | `green300` | #A6DEAD | Acción/acento legible sobre superficies Oscuro |
@@ -78,18 +109,18 @@ La paleta siguiente fue aprobada explícitamente el 2026-10-31 como diseño. Se 
 | `green600` | #246B35 | Hover/foco y texto de marca en Claro |
 | `green700` | #405C4E | Superficie elevada Oscuro |
 | `green800` | #354F43 | Superficie Oscuro |
-| `green900` | #2C4238 | Fondo Oscuro suave; no volver al casi negro del baseline |
+| `green900` | #2C4238 | Referencia del diseño anterior; no es el fondo vigente |
 
 La numeración expresa una escala de uso/luminosidad, no permiso para aplicar cualquier tono a cualquier elemento. Las vistas consumen **roles semánticos**, no posiciones de esta escala; la tabla siguiente fija los roles. Las dos tablas se documentan, pero la implementación guarda cada valor canónico una vez y referencia su equivalente de marca donde coincide.
 
 | Rol semántico | Claro | Oscuro | Uso |
 |---|---|---|---|
-| `background` | #F1F8F2 | #2C4238 | Fondo de aplicación, menta / verde suave |
+| `background` | #E6F4DF | #405C4E | Fondo de aplicación, verde muy claro / verde suave |
 | `surface` | #FFFFFF | #354F43 | Formularios, tarjetas y diálogos |
 | `surfaceRaised` | #E4F2E7 | #405C4E | Superficie secundaria/elevada |
 | `textPrimary` | #1C3828 | #F7FCF8 | Contenido principal |
 | `textSecondary` | #46594D | #D2E6D8 | Ayuda y metadatos legibles |
-| `borderDecorative` | #CCDCCF | #6D8D79 | Separación decorativa; no única señal de control |
+| `borderDecorative` | #8FA995 | #6D8D79 | Separación decorativa; no única señal de control |
 | `borderControl` | #637569 | #ADC9B6 | Contorno necesario de controles |
 | `primary` | #2F7D46 | #A6DEAD | Acción e identidad TutorIA |
 | `primaryHover` | #246B35 | #B9E8BF | Hover de acción principal |
@@ -99,7 +130,7 @@ La numeración expresa una escala de uso/luminosidad, no permiso para aplicar cu
 | `focus` | #246B35 | #B9E8BF | Indicador de foco visible |
 | `error` | #B42332 | #FFCACB | Texto/icono de error sobre superficie |
 | `warning` | #7A4B00 | #FFE0A3 | Texto/icono de advertencia |
-| `success` | #246B35 | #A6DEAD | Texto/icono de éxito |
+| `success` | #2F7D46 | #A6DEAD | Estado de éxito, derivado de primary |
 | `info` | #175E9B | #B9DDF8 | Texto/icono informativo |
 
 Los colores de estado son funcionales secundarios, no otra identidad de marca. No reutilizar sus tonos de texto como fondo sin definir y verificar su pareja `on-*`. Disabled conserva nombre/explicación/estado distinguible; no crear un hexadecimal por vista ni bajar opacidad de forma que pierda legibilidad necesaria.
@@ -132,7 +163,7 @@ Los colores de estado son funcionales secundarios, no otra identidad de marca. N
 5. El controlador expone solamente selección, tema resuelto, cambio y suscripción a apariencia; el adaptador Vue reutiliza ese controlador. Un solo listener de sistema y uno de almacenamiento por aplicación, con disposición explícita; no añadirlos por pantalla.
 6. Para registrar Claro y Oscuro en Vuetify, obtener una vez los tokens calculados de ambas variantes con nodos de lectura temporales aislados y retirarlos antes de montar. Mapear los roles a las claves de Vuetify, incluidos `on-*` y variables de énfasis. El cambio posterior solo selecciona el tema registrado y actualiza la raíz, sin volver a leer/generar paletas ni remontar vistas.
 7. Tailwind conservará utilidades de distribución y sustituirá colores semánticos por variables compatibles con su sintaxis de opacidad; retirar clases antiguas de color al migrar sus consumidores. La hoja global define fondo/estados base y los estilos scoped solo la composición específica.
-8. El selector visual recibe selección/opciones y emite cambio; el contenedor/adaptador aplica la preferencia. Su texto es Claro/Oscuro/Sistema, con nombre accesible y estado seleccionado. Estará en login y todos los encabezados, no solo en perfil.
+8. El selector visual recibe selección/opciones y emite cambio; el contenedor/adaptador aplica la preferencia. Su texto es Claro/Oscuro/Sistema, con nombre accesible y estado seleccionado. Está exclusivamente en Perfil de todos los roles. Login fija localmente `data-theme="dark"` y el tema Vuetify Oscuro, sin alterar la preferencia guardada.
 
 Validar ausencia de flash en carga fría/recarga con preferencia contraria al sistema y en el build servido; no basta ver el estado final. Menús teletransportados reciben tokens de la raíz. Imágenes no se invierten. Mermaid puede regenerar SVG localmente a partir de la misma fuente, nunca pedir otra respuesta al tutor.
 
@@ -149,7 +180,7 @@ Los nombres nuevos serán en inglés. Las ubicaciones siguientes son **previstas
 | Responsabilidad | Módulo/acción prevista | Consumidores y límites |
 |---|---|---|
 | Estructura de panel | `components/layout/AppShell.vue`, composición con RoleSidebar y PanelTitle existentes | Tres paneles; slots de título, contexto, herramientas y contenido; no conoce servicios ni permisos |
-| Selector de apariencia | `components/common/AppearanceSelector.vue` + adaptador de §3.2 | Login y AppShell; sin almacenamiento o llamadas HTTP en el componente visual |
+| Selector de apariencia | `components/AppearanceSelector.vue` + adaptador de §3.2 | ProfilePanel; sin almacenamiento o llamadas HTTP en el componente visual |
 | Título y acciones de página | `components/common/PageHeader.vue` si la composición compartida aporta jerarquía real | Vistas coordinador y secciones administrativas; un título y acciones por tarea |
 | Estado de región | `components/common/AsyncState.vue` | Carga, vacío inicial, sin coincidencias, error e indisponibilidad; mensaje/ayuda y evento de reintento manual |
 | Confirmación | `components/common/ConfirmDialog.vue` | Identidad, consecuencia, texto de confirmar y pendiente; emite intención, nunca elimina entidades por sí mismo |
@@ -233,7 +264,7 @@ Cada etapa aplica PUDS y termina con integración del incremento parcial, recorr
 | Etapa | Dependencia y alcance | Entregable / condición de salida |
 |---|---|---|
 | C0 — Preparación | Aprobación del plan; confirmar contratos/columnas, consumidores, navegadores y entorno | Inventario/matriz de casos; baseline build/lint y defectos conocidos registrados; tareas posteriores con IDs SPEC-002, sin alterar evidencias previas |
-| C1 — Apariencia | C0; tokens/bootstrap/Vuetify/Tailwind/selector y estilos compartidos | Dos temas completos en estructura, overlays y login; pruebas UI-01/02 y contraste inicial; no pérdida de estado ni HTTP por tema |
+| C1 — Apariencia | C0; tokens/bootstrap/Vuetify/Tailwind/selector y estilos compartidos | Dos temas en paneles/overlays, login fijo Oscuro; pruebas UI-01/02 y contraste inicial; no pérdida de estado ni HTTP por tema |
 | C2 — Patrones e interacción | C1; AppShell/sidebar/perfil, estado/aviso/confirmación, formularios y listas | Consumidores reales migrados; UI-03/04/05 parcial; foco/dirty/401/timeout y retorno con filtros verificados |
 | C3 — Administración y coordinación | C2; todas las secciones de superadmin/coordinador, tutor/RAG y analíticas | UI-05/06/08; estados simulados identificados, ayudas Excel sin reparación, todos los formularios/acciones accesibles |
 | C4 — Estudiante | C2; conversación/compositor/dictado/agenda/Mermaid | UI-07/08; ambas variantes, errores y alternativas; sin llamadas reales IA para estados controlados |
@@ -306,7 +337,7 @@ Todos los IDs de esta sección pertenecen a SPEC-002; tareas, commits y revisió
 | ID | Pantallas / entregable técnico | Construcción | Verificación |
 |---|---|---|---|
 | RF-1 | Todas; paleta verde/blanca, mapeo de colores actuales, tokens, tipografía/espaciado/jerarquía y catálogo | C1–C5 | UI-01/09; revisión comparativa de dirección, contraste y consumidores |
-| RF-2 | Login/tres encabezados; selector y controlador de apariencia | C1 | UI-02; cambios explícitos/sistema y conservación |
+| RF-2 | Perfil de los tres roles; selector y controlador de apariencia; login fijo Oscuro como excepción aprobada | C1 | UI-02; cambios explícitos/sistema y conservación |
 | RF-3 | HTML/arranque/controlador; clave local y fallback/sync | C1 | UI-02; primera carga, storage/recarga/logout/pestañas |
 | RF-4 | Todas y overlays/calendario/chat/diagramas; tokens y paletas render | C1/C3/C4 | UI-02/07/08/09; ambas variantes sin inversión |
 | RF-5 | AppShell/patrones/perfil/componentes específicos y consumidores | C2–C4 | UI-01; props/emits/slots, no HTTP oculto/duplicación |

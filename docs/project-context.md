@@ -56,7 +56,7 @@ El estado global es **MVP implementado con verificación parcial y brechas funci
 
 1. La base funcional está registrada retrospectivamente en Spec-000.
 2. SPEC-001 construyó un proyecto de pruebas y cerró su evaluación **con defectos**, no con certificación integral.
-3. SPEC-002 tiene preparación C0 y una refactorización frontend previa a C1. **No está terminado el rediseño UI/UX**, ni los temas Claro/Oscuro/Sistema.
+3. SPEC-002 tiene **cierre funcional acotado**: C1–C4 implementados, Claro/Oscuro/Sistema y verificaciones mínimas de Edge. La evaluación integral y las tareas expresamente diferidas siguen pendientes; no es certificación de los 28 requisitos.
 4. Están pendientes la jerarquía académica completa, la sincronización de fuentes de Drive, la integración Calendar y las notificaciones automáticas.
 5. El tutor y el RAG tienen infraestructura y flujos existentes, pero no está acreditado el ciclo completo de recuperación con citas obligatorias, calidad pedagógica, recursos específicos y limpieza consistente.
 6. El control comercial requiere completar presupuesto monetario, almacenamiento y garantías ante concurrencia. La operación necesita recuperación durable, migraciones y validación de despliegue.
@@ -127,7 +127,7 @@ Para frontend se dispone de `npm run dev`, `npm run lint` y `npm run build`, eje
 |---|---|---|
 | [Spec-000](specs/spec-000-mvp/Spec-000-mvp.md) | Baseline retrospectivo del MVP v0.1.0 | Cerrado como descripción de la versión, no como certificación integral |
 | [SPEC-001](specs/spec-001-tests/spec.md) | Pruebas esenciales de capacidad, estudiantes y conversaciones, con control del destino y limpieza | Evaluación cerrada con defectos; resultados en su [registro](specs/spec-001-tests/test.md) |
-| [SPEC-002](specs/spec-002-ui-ux/spec.md) | Sistema visual, navegación, interacción, accesibilidad y adaptación por dispositivo | C0 y refactor previo a C1 disponibles; C1–C5 pendientes de completar/verificar. [Plan](specs/spec-002-ui-ux/plan.md) y paleta aprobados |
+| [SPEC-002](specs/spec-002-ui-ux/spec.md) | Sistema visual, navegación, interacción, accesibilidad y adaptación por dispositivo | C1–C4 funcionales; C5 mínimo y Edge comprobados. Cierre acotado para continuar SPEC-003; [pendientes diferidos](specs/spec-002-ui-ux/tasks.md) sin ejecutar |
 | [SPEC-008](specs/spec-008-postgresql/spec.md) | PostgreSQL 18.x externo y credenciales separadas | Esquema y seed instalados por autorización posterior; disponibilidad y tres logins verificados. Sin suites ni certificación integral PostgreSQL |
 
 La existencia de componentes reutilizables es una base para continuar SPEC-002, no un cierre automático de tareas o requisitos. Los detalles de cada implementación y su evidencia permanecen en la spec correspondiente.
@@ -143,7 +143,8 @@ Los principales patrones disponibles son:
 - **Perfil y sesión:** servicios comunes en `authService`, actualización del usuario sin perder el rol y conservación del teléfono editado ante respuestas que no lo incluyen.
 - **Avisos y formatos:** toast reactivo compartido, fallbacks de error en español y utilidades de fechas, números, tamaño de archivo y selección `File`/lista de archivos.
 - **Excel:** `firstFile` admite el valor del selector simple en importaciones de cursos y alumnos.
-- **Mermaid:** etiquetas SVG sin HTML compatibles con sanitización y estado de error visible ante fallos de carga/render.
+- **Mermaid:** las respuestas académicas pueden incluir flowcharts, mapas mentales, secuencias, estados, clases/ER, Gantt/timeline, gráficos cuantitativos y otros tipos Mermaid 11.16.1. El SVG sanitizado conserva su tamaño intrínseco con desplazamiento horizontal y zoom, sin reducir diagramas anchos hasta volver ilegible el texto; el renderizador ajusta el espaciado por tipo, evita el marcador de hoy fuera del rango de un Gantt y el generador prioriza síntesis y etiquetas breves. Se oculta la sección de fuente y se conserva un estado de error visible ante fallos de carga/render.
+- **Respuestas del tutor:** todas las respuestas del asistente se renderizan como Markdown con fórmulas LaTeX (`\( \)`, `\[ \]`, `$ $`, `$$ $$`) mediante KaTeX, sin HTML crudo y sanitizadas; los bloques ```` ```mermaid ```` se dibujan también en respuestas de chat. El agente produce el formato; el frontend solo lo pinta.
 - **Robustez de vistas:** error con reintento en detalle de curso, confirmación al retirar matrícula, protección ante respuestas atrasadas al abrir conversaciones y envío unificado por modo.
 - **Agenda y presentación:** cuadrícula propia, lista mensual de actividades y ajustes responsivos de chat y paneles.
 
@@ -166,7 +167,7 @@ Los identificadores CU/HU permiten vincular las capacidades de producto con las 
 | CU-07 / HU-11 | Parcial | Tokens, tarifas versionadas, costo estimado y analíticas de coordinación | Presupuesto exigible, cobertura de operaciones IA y visión financiera global necesaria para Super Admin | SPEC-006 propuesta |
 | CU-08 / HU-07 | Parcial | Chat por curso, historial, sesión y citas recibidas | PDF/página verificables, respuesta fundamentada y negativa explícita sin evidencia suficiente | SPEC-004 propuesta |
 | CU-09 / HU-08 | Parcial | Agenda de lectura desde SQL y filtros | Fuente Calendar sincronizada, gestión de vínculo, cambios/cancelaciones y zona horaria | SPEC-005 propuesta |
-| CU-10 / HU-09 | Parcial | Endpoint/modo recursos, respuestas y render Mermaid | Quizzes, flashcards y resúmenes con contratos y criterios de calidad definidos; no basta el diagrama genérico | SPEC-004 propuesta |
+| CU-10 / HU-09 | Parcial | Endpoint/modo recursos, recuperación RAG con salida explícita aun sin coincidencias, generación Mermaid según solicitud y política de conocimiento del curso, explicación Markdown y render sanitizado | Quizzes, flashcards y resúmenes con contratos y criterios de calidad definidos; validar calidad/atribución en distintas materias | SPEC-004 propuesta |
 | CU-11 / HU-10 | Parcial | Modo práctica y configuración enviada al agente | Verificar guía socrática multivuelta, sin entregar directamente la solución | SPEC-004 propuesta |
 | CU-12 / HU-12 | Pendiente | Tabla de logs y actividades como base | Programación, entrega, reintento y deduplicación de avisos de 7 días/24 h | SPEC-005 propuesta |
 
@@ -189,7 +190,7 @@ La navegación conserva guards por rol y autenticación; las rutas desconocidas 
 | Capa | Tecnologías y decisiones vigentes |
 |---|---|
 | Frontend | Vue 3, JavaScript, Vuetify 4, Pinia, Vue Router y Axios; Vite para desarrollo/build y ESLint para lint; Tailwind configurado |
-| Contenido educativo | Mermaid y DOMPurify para diagramas sanitizados |
+| Contenido educativo | Mermaid y DOMPurify para diagramas sanitizados; markdown-it, markdown-it-texmath y KaTeX para respuestas con fórmulas |
 | Backend | Python, Flask, SQLAlchemy, Flask-JWT-Extended y Flask-Limiter |
 | Datos | PostgreSQL 18.x mediante SQLAlchemy/psycopg; esquema `public`. Pinecone para vectores a través de n8n; no se introduce pgvector |
 | Integraciones | n8n, OpenAI y Google Drive; Calendar es parte de la hoja de ruta, no de la integración actual |
@@ -213,7 +214,8 @@ Navegador: Vue + Vuetify + Pinia
 - Flask organiza blueprints, modelos y servicios de validación, cuota, tarifas, tokens e ingestión. Parte de la lógica sigue en rutas; no se declara Clean Architecture completa.
 - PostgreSQL 18.x y n8n son dependencias externas: Compose no los instala.
 - FullCalendar está entre las dependencias, pero la agenda actual utiliza una cuadrícula propia.
-- Existe un único tema Vuetify oscuro, con superficies carbón; no hay selector ni resolución Claro/Oscuro/Sistema. Las variables CSS introducidas no equivalen a los tokens completos aprobados de SPEC-002.
+- [Tokens canónicos](../frontend/public/tokens.css) para Claro verde muy claro/blanco y Oscuro verde suave; Vuetify deriva sus colores de esta fuente. Sistema es el valor inicial y la única preferencia persistente nueva es `tutoria.appearance`. El selector está únicamente en Perfil de cada rol, no en la navegación lateral ni login; no hay barra superior de panel. Login usa siempre Oscuro con fondo petróleo, sin modificar la preferencia de los perfiles; su red decorativa es más clara/densa y mantiene deriva sin cursor, salvo movimiento reducido.
+- Navegación compartida, borradores solo en memoria, confirmaciones, estados recuperables, errores persistentes, perfil controlado, paginación local y protección de lecturas obsoletas. Chat conserva borrador ante fallo, controla IME/imagen/dictado y ofrece diagramas saneados con fuente/zoom; agenda mantiene todas las actividades del período.
 
 Fuentes: [dependencias frontend](../frontend/package.json), [dependencias backend](../backend/requirements.txt), [tema](../frontend/src/plugins/vuetify.js), [app](../backend/app.py) y [Compose](../docker-compose.yml).
 
@@ -247,9 +249,12 @@ El seed ampliado conserva un administrador y los tres roles, añade solo dos pla
 - Chat: valida sesión propia, matrícula, modo y cuota; envía contexto/configuración a n8n y persiste intercambio, citas y consumo cuando corresponde.
 - Memoria del agente e historial SQL no son lo mismo; no se transmite todo el historial SQL en cada petición.
 - Consulta/práctica registran indisponibilidad mediante `service_unavailable`; recursos puede devolver `502`. No se debe presentar ese comportamiento como disponibilidad garantizada.
+- Recursos: el backend invoca una sola vez el modo `recursos`; no cambia a `chat` como reintento. El contrato de n8n devuelve título, explicación, Mermaid y citas, o un error explícito.
 - Imágenes: backend admite PNG/JPEG/WEBP/GIF hasta 4 MiB; el selector frontend actual ofrece PNG/JPEG. El dictado depende del navegador.
 
-Los tres exports son [chat](../automation/workflows/students-agent-chatbot.json), [ingestión](../automation/workflows/upload-to-pinecone.json) y [administración de índice](../automation/workflows/knowledge-index-admin.json). Las herramientas subordinadas de RAG/Mermaid referenciadas externamente no están completamente reproducidas en estos artefactos.
+Los exports son [TutorIA](../automation/workflows/students-agent-chatbot.json), [generación Mermaid](../automation/workflows/tool-generador-mermaid.json), [RAG de chat](../automation/workflows/tool-rag-chat.json), [ingestión](../automation/workflows/upload-to-pinecone.json) y [administración de índice](../automation/workflows/knowledge-index-admin.json). Los flujos principales/subordinados se mantienen versionados en n8n y en estos exports.
+
+La generación de recursos recupera primero material del namespace institucional/curso. Una recuperación vacía se convierte en contexto explícito y nunca corta silenciosamente la respuesta. Si la extensión de conocimiento está deshabilitada, se informa que faltan fuentes; si está habilitada, el generador puede complementar con conocimiento general y lo declara en la explicación. El catálogo Mermaid controlado por la app y el subworkflow incluye flowchart, mindmap, sequence, state, class, ER, Gantt, timeline, pie, quadrant, journey, requirements, gitGraph, Sankey, XY, block, architecture, packet, Kanban y C4Context/C4Container. La app solo renderiza tipos del catálogo y normaliza dos convenciones ambiguas de Mermaid: la etiqueta aislada `mindmap` dentro de un mapa mental y dos puntos en títulos de sección de journey.
 
 Persisten diferencias documentadas de metadatos: ingestión identifica `sourceFile`, eliminación usa `archivo`, y el enriquecimiento toma datos del primer elemento del lote. La atribución, página y eliminación de varios documentos deben demostrarse antes de dar el RAG por completo. Un trabajo marcado `completed` o una cita recibida no prueban recuperación correcta.
 
@@ -272,7 +277,7 @@ Fuentes: [cuotas](../backend/services/subscription_quota.py), [tarifas](../backe
 | SPEC-001, integración histórica | I-1 a I-4 aprobados, datos propios limpiados | Regresión actual completa ni resto de las funciones |
 | SPEC-001, sistema histórico | S-1/S-3/S-3b aprobados; S-2 fallido | Importación corregida extremo a extremo |
 | SPEC-002, refactor | Lint/build código 0; revisión visual y multipart con mock | Matriz UI-xx, contraste, lector de pantalla, rendimiento o persistencia real |
-| SPEC-002, requisitos | 20 RF y 8 RNF no ejecutados integralmente | No es una aprobación UI/UX |
+| SPEC-002, cierre acotado | Temas, navegación/formularios, chat/agenda/diagramas, límites de archivos y muestra de contraste comprobados en Edge con HTTP interceptado | Sin lector real, matriz completa de navegadores/zoom, medidas de rendimiento ni regresión backend/SQL/proveedores; no aprobación integral de 20 RF/8 RNF |
 
 Las evidencias consolidadas están en [SPEC-001](specs/spec-001-tests/evidence.md) y [SPEC-002](specs/spec-002-ui-ux/evidence.md). Los reportes/journals locales anteriores fueron retirados por decisión registrada; no se debe prometer que siguen disponibles para reproducción. Existen runners y procedimientos para nuevas ejecuciones.
 
@@ -312,7 +317,7 @@ Para un entorno real: cambiar credenciales públicas del seed, restringir puerto
 
 ### 8.1 Alcance y reglas de planificación
 
-Se propone **terminar SPEC-002 y añadir cinco specs funcionales/técnicas**, no una spec por pantalla, endpoint, tabla o prueba. Los identificadores SPEC-003 a SPEC-007 están **propuestos**, no creados ni aprobados. SPEC-008 registra por separado el cambio transversal PostgreSQL ya solicitado; no sustituye esas capacidades pendientes. Se reutilizan las capacidades actuales; no se propone reescribir el MVP.
+Se propone **continuar desde el cierre funcional acotado de SPEC-002 y añadir cinco specs funcionales/técnicas**, no una spec por pantalla, endpoint, tabla o prueba. Los identificadores SPEC-003 a SPEC-007 están **propuestos**, no creados ni aprobados. SPEC-008 registra por separado el cambio transversal PostgreSQL ya solicitado; no sustituye esas capacidades pendientes. Se reutilizan las capacidades actuales; no se propone reescribir el MVP.
 
 La referencia de producto completo son las capacidades de §5, con calidad y operación suficientes para su uso institucional. Las decisiones de alcance pendientes se resolverán explícitamente al aprobar cada spec.
 
@@ -322,21 +327,21 @@ La referencia de producto completo son las capacidades de §5, con calidad y ope
 - Las decisiones pendientes de §9 no son autorización para elegir proveedores, cambiar contratos, migrar datos o ejecutar escrituras reales.
 - Los IDs de CU/HU se conservan; los RF/RNF nuevos se califican por spec para evitar colisiones.
 
-### 8.2 SPEC-002 existente — Completar experiencia y sistema visual
+### 8.2 SPEC-002 existente — Cierre funcional acotado
 
-**Objetivo:** terminar el alcance aprobado, aprovechando el refactor ya incorporado.
+**Resultado vigente:** alcance funcional C1–C4 completado aprovechando el refactor; comprobaciones mínimas acordadas y [evidencia](specs/spec-002-ui-ux/evidence.md). Se puede iniciar la definición de SPEC-003, sin asumir su aprobación.
 
-**Trabajo necesario:**
+**Trabajo implementado:**
 
 - Conciliar el plan/inventario con `RoleLayout`, componentes compartidos y separación chat/agenda; reutilizarlos y completar sus contratos, no crear un segundo shell.
 - Implementar paleta verde/blanca y tokens de ambos temas, selector Claro/Oscuro/Sistema, persistencia tolerante a fallos e inicialización sin destello.
 - Completar navegación/foco, formularios, confirmaciones, cambios sin guardar, estados de región y avisos accesibles.
 - Adaptar pantallas administrativas, chat, agenda, Mermaid y estados de archivos; alinear ayuda Excel y formatos de imagen con lo soportado.
-- Ejecutar la matriz aprobada de responsividad, teclado, contraste, movimiento reducido, navegadores, rendimiento y regresión.
+- Verificación mínima de Edge, contraste, teclado/semántica y viewports; no la matriz exhaustiva original.
 
 **Dependencias:** base actual y decisiones del plan aprobado; registrar la adaptación de tareas antes de cerrarlas. La refactorización previa no satisface automáticamente T19/T24/T29 ni los RF asociados.
 
-**Aceptación:** criterios RF/RNF y C1–C5 de la [spec existente](specs/spec-002-ui-ux/spec.md) con evidencias, catálogo UI y defectos tratados. Reejecutar S-2 con entorno real autorizado para cerrar S-001; conservar el resultado histórico fallido.
+**Pendientes futuros:** T87, T89–T91, T92–T93 y T94–T98; lector real y extensión de zoom/dispositivos no ejecutados. S-2 requiere entorno real autorizado para cerrar S-001; se conserva el fallo histórico. La aceptación integral RF/RNF no se deriva del cierre acotado.
 
 ### 8.3 SPEC-003 propuesta — Organización académica y matrícula completa
 
@@ -435,7 +440,7 @@ La referencia de producto completo son las capacidades de §5, con calidad y ope
 
 ### 8.8 Orden recomendado y criterio común de cierre
 
-1. Conciliar SPEC-002 con el refactor y terminar su experiencia sobre funciones existentes; cerrar la comprobación real de S-001.
+1. Definir SPEC-003 desde la base UI funcional y sus límites documentados; programar por separado las verificaciones diferidas de SPEC-002 y la comprobación real de S-001.
 2. Aprobar el modelo académico y entregar SPEC-003 para evitar rehacer asociaciones de Drive/Calendar.
 3. Desarrollar SPEC-004 y SPEC-005 como frentes independientes una vez establecida esa identidad.
 4. Diseñar SPEC-006 junto con los contratos IA/almacenamiento de SPEC-004 y activar sus controles antes de liberar consumo automatizado.
