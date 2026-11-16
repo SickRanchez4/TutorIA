@@ -7,6 +7,8 @@
   Cambiar las contrasenas desde Perfil antes de exponer la aplicacion.
   Incluye 12 instituciones ficticias adicionales con dominios .test,
   36 coordinadores y 480 estudiantes inspirados en la filosofia.
+  C-137 incluye otros 80 estudiantes, 12 cursos y actividad de cuatro meses.
+  Su suscripcion de ejemplo adelanta solo el inicio; conserva vencimiento y cuotas.
   Los fallos RAG y de notificaciones son simulados; no hay acciones externas.
 */
 BEGIN;
@@ -530,6 +532,315 @@ BEGIN
             END LOOP;
         END LOOP;
     END LOOP;
+
+    -- Historial importado de C-137, visible para sus coordinadores sin acciones externas.
+    DECLARE
+        v_c137_created_at timestamp;
+        v_enrolled_at timestamp;
+        v_enrollment_active boolean;
+        v_interaction text;
+        v_extra_people jsonb := '[
+          ["Tales","de Mileto","tales.mileto"],
+          ["Anaximandro","de Mileto","anaximandro.mileto"],
+          ["Anaxímenes","de Mileto","anaximenes.mileto"],
+          ["Heráclito","de Éfeso","heraclito.efeso"],
+          ["Parménides","de Elea","parmenides.elea"],
+          ["Empédocles","de Agrigento","empedocles.agrigento"],
+          ["Anaxágoras","de Clazómenas","anaxagoras.clazomenas"],
+          ["Demócrito","de Abdera","democrito.abdera"],
+          ["Leucipo","de Mileto","leucipo.mileto"],
+          ["Protágoras","de Abdera","protagoras.abdera"],
+          ["Gorgias","de Leontinos","gorgias.leontinos"],
+          ["Aspasia","de Mileto","aspasia.mileto"],
+          ["Diotima","de Mantinea","diotima.mantinea"],
+          ["Hiparquia","de Maronea","hiparquia.maronea"],
+          ["Arete","de Cirene","arete.cirene"],
+          ["Teano","de Crotona","teano.crotona"],
+          ["Pitágoras","de Samos","pitagoras.samos"],
+          ["Filolao","de Crotona","filolao.crotona"],
+          ["Arquitas","de Tarento","arquitas.tarento"],
+          ["Aristipo","de Cirene","aristipo.cirene"],
+          ["Carnéades","de Cirene","carneades.cirene"],
+          ["Arcesilao","de Pitane","arcesilao.pitane"],
+          ["Posidonio","de Apamea","posidonio.apamea"],
+          ["Panecio","de Rodas","panecio.rodas"],
+          ["Marco Tulio","Cicerón","marco.ciceron"],
+          ["Tito","Lucrecio","tito.lucrecio"],
+          ["Michel","de Montaigne","michel.montaigne"],
+          ["Blaise","Pascal","blaise.pascal"],
+          ["Gottfried","Leibniz","gottfried.leibniz"],
+          ["Francis","Bacon","francis.bacon"],
+          ["Thomas","Hobbes","thomas.hobbes"],
+          ["Jean-Jacques","Rousseau","jean.rousseau"],
+          ["Denis","Diderot","denis.diderot"],
+          ["Adam","Smith","adam.smith"],
+          ["John Stuart","Mill","john.mill"],
+          ["William","James","william.james"],
+          ["Charles Sanders","Peirce","charles.peirce"],
+          ["John","Dewey","john.dewey"],
+          ["Henri","Bergson","henri.bergson"],
+          ["Albert","Camus","albert.camus"]
+        ]';
+    BEGIN
+        SELECT id, created_at INTO STRICT v_institution_id, v_c137_created_at
+        FROM instituciones WHERE nombre = v_institution_name AND dominio_permitido = v_domain;
+
+        -- Ajuste autorizado para que los consumos sinteticos queden dentro de vigencia.
+        UPDATE suscripciones
+        SET fecha_inicio = v_base_date - INTERVAL '120 days', updated_at = v_now
+        WHERE institucion_id = v_institution_id
+            AND fecha_inicio > v_base_date - INTERVAL '120 days';
+
+        FOR v_person IN SELECT p.value->>0 AS first_name, p.value->>1 AS last_name,
+                p.value->>2 AS email, (p.position - 3)::integer AS ordinal
+            FROM jsonb_array_elements(v_philosophers || v_extra_people)
+                WITH ORDINALITY AS p(value, position)
+            WHERE p.position > 3
+        LOOP
+            v_email := v_person.email || '@' || v_domain;
+            IF EXISTS (SELECT 1 FROM users WHERE email = v_email
+                AND institucion_id IS DISTINCT FROM v_institution_id) THEN
+                RAISE EXCEPTION 'Un correo de C-137 pertenece a otra institucion; operacion cancelada.';
+            END IF;
+            INSERT INTO users
+                (institucion_id, email, email_verified, password_hash, first_name, last_name,
+                 created_at, updated_at)
+            VALUES (v_institution_id, v_email, true, v_password_hash,
+                v_person.first_name, v_person.last_name,
+                v_base_date - make_interval(days => 120 - v_person.ordinal % 5),
+                v_base_date - make_interval(days => 120 - v_person.ordinal % 5))
+            ON CONFLICT (email) DO NOTHING;
+            SELECT id INTO STRICT v_user_id FROM users WHERE email = v_email;
+            IF EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                WHERE ur.user_id = v_user_id AND r.name <> 'estudiante') THEN
+                RAISE EXCEPTION 'Un estudiante de C-137 tiene otro rol; no se amplian permisos.';
+            END IF;
+            INSERT INTO user_roles (user_id, role_id)
+            SELECT v_user_id, id FROM roles WHERE name = 'estudiante'
+            ON CONFLICT DO NOTHING;
+        END LOOP;
+
+        IF EXISTS (SELECT 1 FROM suscripciones s JOIN planes p ON p.id = s.plan_id
+            WHERE s.institucion_id = v_institution_id AND p.max_cuentas IS NOT NULL
+                AND (SELECT count(*) FROM users u
+                    WHERE u.institucion_id = v_institution_id AND u.is_active) > p.max_cuentas) THEN
+            RAISE EXCEPTION 'La ampliacion de C-137 supera el limite de cuentas del plan.';
+        END IF;
+
+        FOR v_catalog IN SELECT * FROM (VALUES
+            (1, 'MAT-101', 'Matemáticas Básicas',
+             '¿Cómo verifico las raíces de una ecuación cuadrática?',
+             'Sustituye cada raíz en la ecuación original y comprueba que el resultado sea cero.',
+             'Para x² - 5x + 6 = 0, sustituye 2 y 3. Ambos valores anulan el polinomio.'),
+            (2, 'FIS-201', 'Física General',
+             '¿Cómo relaciono fuerza, masa y aceleración?',
+             'En un sistema de masa constante, la fuerza neta es el producto de masa y aceleración.',
+             'Una fuerza neta de 18 N sobre 6 kg produce una aceleración de 3 m/s².'),
+            (3, 'ALG-201', 'Álgebra Lineal',
+             '¿Qué significa que dos vectores sean linealmente independientes?',
+             'Ninguno puede expresarse como múltiplo del otro; solo la combinación trivial produce el vector cero.',
+             'Los vectores (1, 0) y (0, 1) son independientes y generan el plano.'),
+            (4, 'CAL-201', 'Cálculo Diferencial',
+             '¿Qué representa la derivada de una función en un punto?',
+             'Representa su tasa de cambio instantánea y la pendiente de la recta tangente cuando existe.',
+             'Para f(x) = x², f''(x) = 2x; en x = 3 la pendiente es 6.'),
+            (5, 'EST-210', 'Estadística Aplicada',
+             '¿Cuándo conviene usar la mediana en lugar de la media?',
+             'La mediana es más resistente a valores extremos y ayuda a describir distribuciones asimétricas.',
+             'En 2, 3, 3, 4 y 100, la mediana es 3 y la media es 22,4. Explica qué resume cada una.'),
+            (6, 'PRO-101', 'Fundamentos de Programación',
+             '¿Cómo distingo una condición de un ciclo?',
+             'Una condición selecciona una rama; un ciclo repite instrucciones mientras se cumpla un criterio.',
+             'Para sumar una lista, inicia el acumulador en cero y recorre cada elemento una vez.'),
+            (7, 'BDD-201', 'Bases de Datos Relacionales',
+             '¿Para qué sirve una clave foránea?',
+             'Mantiene la integridad referencial al vincular valores con una clave de otra tabla.',
+             'Una matrícula debe referenciar a un estudiante y a un curso existentes; una restricción única evita duplicarla.'),
+            (8, 'LOG-210', 'Lógica y Argumentación',
+             '¿Una conclusión verdadera garantiza la validez de un argumento?',
+             'No. La validez depende de que las premisas verdaderas no permitan una conclusión falsa.',
+             'Si llueve, la calle se moja. Que esté mojada no prueba que llovió: pudo regarse.'),
+            (9, 'ETI-210', 'Ética Profesional',
+             '¿Cómo analizo un conflicto de intereses?',
+             'Identifica los deberes, las personas afectadas y los incentivos personales; declara el conflicto y evalúa alternativas.',
+             'Si evalúas una propuesta de una persona cercana, comunica el vínculo y considera apartarte de la decisión.'),
+            (10, 'EPI-210', 'Epistemología',
+             '¿Qué diferencia una creencia de una creencia justificada?',
+             'La justificación exige razones pertinentes, evidencia y examen de objeciones; no equivale a certeza absoluta.',
+             'Contrasta una afirmación sin fuentes con un estudio que detalla método, datos y limitaciones.'),
+            (11, 'MET-210', 'Metodología de la Investigación',
+             '¿Cómo formulo una pregunta de investigación delimitada?',
+             'Precisa la población, las variables, el contexto y el periodo; comprueba que exista un método viable para responderla.',
+             'Pregunta cómo cambia el tiempo de estudio semanal en un curso durante un semestre, en lugar de investigar todo el aprendizaje.'),
+            (12, 'HIS-220', 'Historia del Pensamiento',
+             '¿Qué distingue al estoicismo del epicureísmo?',
+             'Ambos proponen formas de vida reflexivas; el estoicismo centra la virtud y el epicureísmo el placer estable y la ausencia de dolor.',
+             'Compara cómo valorarían una pérdida material sin confundir estoicismo con insensibilidad ni epicureísmo con exceso.'),
+            (13, 'POL-210', 'Filosofía Política',
+             '¿Legalidad y legitimidad significan lo mismo?',
+             'La legalidad describe conformidad con normas; la legitimidad examina la justificación de la autoridad y sus decisiones.',
+             'Una norma puede aprobarse mediante el procedimiento vigente y aun recibir objeciones razonadas sobre su justicia.'),
+            (14, 'ECO-210', 'Economía para la Toma de Decisiones',
+             '¿Qué es el costo de oportunidad?',
+             'Es el valor de la mejor alternativa a la que renuncias al elegir una opción.',
+             'Si dedicas una tarde a una actividad, considera el beneficio de la mejor alternativa que no realizas, sin sumar todas las alternativas.')
+        ) AS c(ordinal, code, name, question, answer, example)
+        LOOP
+            IF v_catalog.ordinal > 2 AND EXISTS (SELECT 1 FROM cursos
+                WHERE institucion_id = v_institution_id AND codigo = v_catalog.code
+                    AND (descripcion IS NULL OR descripcion NOT LIKE '[SIMULACIÓN SEED C-137]%')) THEN
+                RAISE EXCEPTION 'Un codigo de curso de C-137 ya esta en uso fuera de esta simulacion.';
+            END IF;
+            INSERT INTO cursos (institucion_id, nombre, codigo, descripcion)
+            VALUES (v_institution_id, v_catalog.name, v_catalog.code,
+                '[SIMULACIÓN SEED C-137] Curso de demostración con tutoría, ejercicios y seguimiento académico.')
+            ON CONFLICT (institucion_id, codigo) WHERE codigo IS NOT NULL DO NOTHING;
+            SELECT id INTO STRICT v_course_id FROM cursos
+            WHERE institucion_id = v_institution_id AND codigo = v_catalog.code;
+            INSERT INTO configuracion_ia
+                (curso_id, system_prompt, temperatura, modos_permitidos, extender_conocimiento, updated_at)
+            VALUES (v_course_id, 'Eres un tutor de ' || v_catalog.name
+                || '. Explica paso a paso, pide al estudiante que razone y ofrece retroalimentación. '
+                || 'No inventes fuentes ni materiales RAG: este curso contiene ejemplos simulados.',
+                0.3, 'chat,practicar,recursos', false, v_base_date - INTERVAL '115 days')
+            ON CONFLICT (curso_id) DO NOTHING;
+
+            FOR v_event IN 1..8 LOOP
+                v_title := '[C-137] ' || (ARRAY['Diagnóstico', 'Taller guiado', 'Práctica',
+                    'Evaluación parcial', 'Repaso', 'Seminario', 'Proyecto aplicado', 'Evaluación final'])[v_event]
+                    || ': ' || v_catalog.name;
+                v_when := v_base_date + make_interval(
+                    days => (ARRAY[-90, -60, -30, -7, 3, 7, 14, 28])[v_event], hours => 18);
+                INSERT INTO actividades_agenda
+                    (curso_id, titulo, descripcion, tipo, fecha_limite, estado, created_at)
+                SELECT v_course_id, v_title,
+                    '[SIMULACIÓN SEED C-137] Resolver un caso de ' || v_catalog.name
+                    || ' y justificar el procedimiento. Las notificaciones históricas son fallos simulados, sin envíos.',
+                    (ARRAY['tarea', 'tarea', 'tarea', 'examen', 'tarea', 'tarea', 'proyecto', 'examen'])[v_event],
+                    v_when, 'vigente', v_base_date - INTERVAL '115 days'
+                WHERE NOT EXISTS (SELECT 1 FROM actividades_agenda
+                    WHERE curso_id = v_course_id AND titulo = v_title);
+            END LOOP;
+
+            FOR v_student IN SELECT roster.*, row_number() OVER (ORDER BY roster.email)::integer AS ordinal
+                FROM (
+                    SELECT u.id, u.email, u.created_at FROM users u
+                    WHERE u.institucion_id = v_institution_id AND u.is_active AND (
+                        u.email IN (SELECT (p.value->>'email') || '@' || v_domain
+                            FROM jsonb_array_elements(v_people) AS p(value)
+                            WHERE p.value->>'role' = 'estudiante')
+                        OR u.email IN (SELECT (p.value->>2) || '@' || v_domain
+                            FROM jsonb_array_elements(v_philosophers || v_extra_people)
+                                WITH ORDINALITY AS p(value, position) WHERE p.position > 3))
+                ) AS roster
+            LOOP
+                IF v_catalog.ordinal > 2 AND (v_student.ordinal + v_catalog.ordinal) % 3 <> 0 THEN
+                    CONTINUE;
+                END IF;
+                INSERT INTO estudiante_cursos (user_id, curso_id, fecha_inscripcion)
+                VALUES (v_student.id, v_course_id,
+                    greatest(v_student.created_at, v_base_date - INTERVAL '115 days'))
+                ON CONFLICT (user_id, curso_id) DO NOTHING;
+                SELECT greatest(v_student.created_at, fecha_inscripcion), is_active
+                INTO STRICT v_enrolled_at, v_enrollment_active FROM estudiante_cursos
+                WHERE user_id = v_student.id AND curso_id = v_course_id;
+                IF NOT v_enrollment_active THEN
+                    CONTINUE;
+                END IF;
+
+                FOR v_session_index IN 1..7 LOOP
+                    v_title := '[C-137] ' || v_catalog.name || ': ' || (ARRAY[
+                        'Conceptos iniciales', 'Ejemplos resueltos', 'Práctica guiada',
+                        'Aplicaciones', 'Preparación del parcial', 'Repaso de dudas',
+                        'Síntesis y próximos pasos'])[v_session_index];
+                    v_session_time := CASE WHEN v_session_index = 7 THEN
+                        v_c137_created_at + INTERVAL '30 minutes'
+                            + make_interval(secs => v_student.ordinal * 5 + v_catalog.ordinal)
+                        ELSE v_base_date - make_interval(
+                            days => 108 - (v_session_index - 1) * 21 + v_student.ordinal % 7)
+                            + make_interval(hours => 9 + v_catalog.ordinal % 8) END;
+                    IF v_session_time < v_enrolled_at OR v_session_time + INTERVAL '8 minutes' > v_now THEN
+                        CONTINUE;
+                    END IF;
+                    v_interaction := (ARRAY['consulta', 'practicar', 'recurso_sintetico'])[
+                        1 + (v_session_index - 1) % 3];
+                    SELECT id INTO v_session_id FROM sesiones_chat
+                    WHERE user_id = v_student.id AND curso_id = v_course_id
+                        AND titulo = v_title AND created_at = v_session_time;
+                    IF v_session_id IS NULL THEN
+                        INSERT INTO sesiones_chat (user_id, curso_id, titulo, created_at, updated_at)
+                        VALUES (v_student.id, v_course_id, v_title,
+                            v_session_time, v_session_time + INTERVAL '8 minutes')
+                        RETURNING id INTO v_session_id;
+                    END IF;
+                    INSERT INTO mensajes_chat (sesion_chat_id, rol, contenido, tipo_interaccion, created_at)
+                    SELECT v_session_id, CASE WHEN m.ordinal % 2 = 1 THEN 'user' ELSE 'assistant' END,
+                        CASE m.ordinal WHEN 1 THEN v_catalog.question
+                            WHEN 2 THEN '[SIMULACIÓN SEED C-137] ' || v_catalog.answer
+                            WHEN 3 THEN 'Muéstrame un ejemplo aplicado y explica cómo comprobarlo.'
+                            WHEN 4 THEN '[SIMULACIÓN SEED C-137] ' || v_catalog.example
+                            WHEN 5 THEN '¿Cómo puedo practicar sin limitarme a memorizar la respuesta?'
+                            WHEN 6 THEN '[SIMULACIÓN SEED C-137] Cambia los datos o el contexto del ejemplo. '
+                                || 'Explica cada paso, identifica tus supuestos y verifica si la conclusión se sostiene.'
+                            WHEN 7 THEN 'Resume qué debo revisar antes de entregar mi actividad.'
+                            ELSE '[SIMULACIÓN SEED C-137] Comprueba la definición principal, justifica el procedimiento '
+                                || 'y contrasta el resultado con el ejemplo. Anota cualquier duda para la siguiente tutoría.' END,
+                        v_interaction, v_session_time + make_interval(mins => m.ordinal)
+                    FROM generate_series(1, 8) AS m(ordinal)
+                    WHERE NOT EXISTS (SELECT 1 FROM mensajes_chat
+                        WHERE sesion_chat_id = v_session_id
+                            AND created_at = v_session_time + make_interval(mins => m.ordinal));
+
+                    FOR v_event IN 1..4 LOOP
+                        v_when := v_session_time + make_interval(mins => v_event * 2);
+                        v_operation := (ARRAY['chat_rag', 'practicar', 'resumen_sintetico'])[
+                            1 + (v_session_index - 1) % 3];
+                        v_prompt_tokens := 75 + v_student.ordinal + v_event * 5 + v_catalog.ordinal * 2;
+                        v_completion_tokens := 50 + v_student.ordinal / 3 + v_event * 5;
+                        SELECT id, precio_prompt_por_millon_usd, precio_completion_por_millon_usd
+                        INTO STRICT v_price_id, v_prompt_price, v_completion_price FROM precios_modelo_ia
+                        WHERE proveedor = v_provider AND modelo = v_model AND vigente_desde <= v_when
+                            AND (vigente_hasta IS NULL OR vigente_hasta > v_when);
+                        INSERT INTO consumo_tokens
+                            (institucion_id, curso_id, user_id, tipo_operacion, prompt_tokens, completion_tokens,
+                             costo_estimado_usd, precio_modelo_ia_id, proveedor_modelo, modelo_ia,
+                             precio_prompt_por_millon_usd, precio_completion_por_millon_usd, fecha)
+                        SELECT v_institution_id, v_course_id, v_student.id, v_operation,
+                            v_prompt_tokens, v_completion_tokens,
+                            (v_prompt_tokens * v_prompt_price + v_completion_tokens * v_completion_price) / 1000000,
+                            v_price_id, v_provider, v_model, v_prompt_price, v_completion_price, v_when
+                        WHERE NOT EXISTS (SELECT 1 FROM consumo_tokens
+                            WHERE institucion_id = v_institution_id AND curso_id = v_course_id
+                                AND user_id = v_student.id AND tipo_operacion = v_operation AND fecha = v_when);
+                    END LOOP;
+                END LOOP;
+
+                FOR v_activity IN SELECT id, fecha_limite FROM actividades_agenda
+                    WHERE curso_id = v_course_id AND descripcion LIKE '[SIMULACIÓN SEED C-137]%'
+                        AND fecha_limite < v_base_date
+                LOOP
+                    INSERT INTO log_notificaciones
+                        (user_id, actividad_agenda_id, tipo_notificacion, estado_envio, fecha_ejecucion)
+                    SELECT v_student.id, v_activity.id, n.tipo, 'fallido',
+                        v_activity.fecha_limite - n.anticipacion
+                    FROM (VALUES ('recordatorio_7_dias', INTERVAL '7 days'),
+                        ('alerta_24_horas', INTERVAL '24 hours')) AS n(tipo, anticipacion)
+                    WHERE v_activity.fecha_limite - n.anticipacion >= v_enrolled_at
+                        AND NOT EXISTS (SELECT 1 FROM log_notificaciones
+                            WHERE user_id = v_student.id AND actividad_agenda_id = v_activity.id
+                                AND tipo_notificacion = n.tipo);
+                END LOOP;
+            END LOOP;
+        END LOOP;
+
+        IF EXISTS (SELECT 1 FROM consumo_tokens c JOIN suscripciones s
+                ON s.institucion_id = c.institucion_id
+            WHERE c.institucion_id = v_institution_id
+            GROUP BY date_trunc('month', c.fecha), s.limite_tokens_mensual
+            HAVING sum(c.prompt_tokens + c.completion_tokens) > s.limite_tokens_mensual) THEN
+            RAISE EXCEPTION 'El historial de C-137 supera la cuota mensual de tokens; revise la simulacion.';
+        END IF;
+    END;
 END;
 $seed$;
 
