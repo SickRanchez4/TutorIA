@@ -94,7 +94,7 @@
               <div class="chat-header__icon" aria-hidden="true"><v-icon icon="mdi-book-education-outline" size="19"></v-icon></div>
               <div class="min-w-0">
                 <h2 class="text-body-large font-weight-black mb-0 text-truncate">{{ activeSesion.titulo }}</h2>
-                <p class="text-body-small text-subtle mb-0 text-truncate">{{ activeCourseLabel }}</p>
+                <p class="text-body-small text-subtle mb-0 text-truncate">Curso: {{ activeCourseLabel }} · #{{ activeSesion.curso_id }}</p>
               </div>
             </div>
           </div>

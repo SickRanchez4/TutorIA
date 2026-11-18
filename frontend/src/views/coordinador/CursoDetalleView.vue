@@ -223,14 +223,24 @@
                     <span class="text-body-small font-weight-bold">Estado de la base</span>
                     <v-chip size="x-small" :color="knowledgeStatus.color" variant="tonal">{{ knowledgeStatus.label }}</v-chip>
                   </div>
-                  <v-chip size="small" variant="outlined">{{ conocimiento.resumen?.documentos_indexados || 0 }} PDF</v-chip>
+                  <div class="d-flex align-center justify-space-between ga-2">
+                    <v-chip size="small" variant="outlined">{{ conocimiento.resumen?.documentos_indexados || 0 }} PDF</v-chip>
+                    <v-btn
+                      size="small"
+                      color="error"
+                      variant="text"
+                      :loading="busy.vaciar"
+                      :disabled="busy.subida || Boolean(retryingJobId || deletingDocument)"
+                      @click="clearConocimiento"
+                    >Vaciar base</v-btn>
+                  </div>
                   <p v-if="conocimiento.resumen?.ultimo_procesamiento_at" class="text-body-small text-subtle mb-0 mt-2">
                     Última indexación: {{ formatDateTime(conocimiento.resumen.ultimo_procesamiento_at) }}
                   </p>
                   <v-alert v-if="latestFailedJob" type="warning" variant="tonal" density="compact" class="mt-3 text-body-small">
                     <div class="d-flex align-center justify-space-between ga-2">
                       <span>La última carga requiere atención.</span>
-                      <v-btn size="x-small" variant="text" color="warning" :loading="retryingJobId === latestFailedJob.id" @click="retryConocimiento(latestFailedJob)">Reintentar</v-btn>
+                      <v-btn size="x-small" variant="text" color="warning" :loading="retryingJobId === latestFailedJob.id" :disabled="busy.vaciar || busy.subida" @click="retryConocimiento(latestFailedJob)">Reintentar</v-btn>
                     </div>
                   </v-alert>
                 </div>
@@ -238,7 +248,6 @@
                 <div v-if="conocimiento?.documentos?.length" class="knowledge-box knowledge-documents">
                   <div class="d-flex align-center justify-space-between mb-2">
                     <span class="text-body-small font-weight-bold">PDF indexados</span>
-                    <v-btn size="x-small" color="error" variant="text" :loading="busy.vaciar" @click="clearConocimiento">Vaciar base</v-btn>
                   </div>
                   <div v-for="documento in conocimiento.documentos" :key="documento.archivo" class="knowledge-document">
                     <div class="min-w-0">
@@ -252,7 +261,7 @@
                       variant="text"
                       :aria-label="`Quitar ${documento.archivo}`"
                       :loading="deletingDocument === documento.archivo"
-                      :disabled="busy.vaciar"
+                      :disabled="busy.vaciar || busy.subida || Boolean(retryingJobId)"
                       @click="removeDocumento(documento.archivo)"
                     >
                       <v-tooltip activator="parent" location="top">Quitar de la base de conocimiento</v-tooltip>
@@ -269,7 +278,7 @@
                   label="Seleccionar archivos PDF"
                   prepend-icon="mdi-file-pdf-box"
                 ></v-file-input>
-                <v-btn color="primary" variant="flat" :loading="busy.subida" @click="uploadConocimiento">
+                <v-btn color="primary" variant="flat" :loading="busy.subida" :disabled="busy.vaciar || Boolean(retryingJobId || deletingDocument)" @click="uploadConocimiento">
                   Subir y procesar PDF
                 </v-btn>
               </v-card-text>
@@ -772,7 +781,7 @@ async function loadConocimiento() {
 }
 
 async function retryConocimiento(job) {
-  if (retryingJobId.value) return
+  if (busy.subida || busy.vaciar || retryingJobId.value || deletingDocument.value) return
   retryingJobId.value = job.id
   try {
     await coordinadorService.retryConocimientoCurso(cursoId.value, job.id)
@@ -786,7 +795,7 @@ async function retryConocimiento(job) {
 }
 
 async function removeDocumento(filename) {
-  if (deletingDocument.value || busy.vaciar) return
+  if (deletingDocument.value || busy.vaciar || busy.subida || retryingJobId.value) return
   if (!await confirmAction({ title: 'Quitar documento', message: `¿Quitar "${filename}" del material disponible del curso?`, confirmText: 'Quitar documento', destructive: true })) return
   deletingDocument.value = filename
   try {
@@ -801,7 +810,7 @@ async function removeDocumento(filename) {
 }
 
 async function clearConocimiento() {
-  if (busy.vaciar || deletingDocument.value) return
+  if (busy.vaciar || deletingDocument.value || busy.subida || retryingJobId.value) return
   if (!await confirmAction({ title: 'Vaciar base de conocimiento', message: 'Se eliminará todo el material indexado de este curso. No se puede deshacer.', confirmText: 'Vaciar base', destructive: true })) return
   busy.vaciar = true
   try {
@@ -816,7 +825,7 @@ async function clearConocimiento() {
 }
 
 async function uploadConocimiento() {
-  if (busy.subida) return
+  if (busy.subida || busy.vaciar || deletingDocument.value || retryingJobId.value) return
   const files = conocimientoFiles.value || []
   if (!files.length) return notify('Selecciona al menos un archivo PDF', true)
   if (files.length > 10) return notify('Selecciona como máximo 10 PDF por carga', true)

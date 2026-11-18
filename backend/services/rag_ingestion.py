@@ -188,19 +188,42 @@ def dispatch_ingestion_job(job: RagIngestionJob) -> RagIngestionJob:
 
     try:
         processor_response = response.json()
-    except ValueError:
-        processor_response = {}
+    except ValueError as error:
+        _set_failed(job, 'El procesador no devolvió una confirmación JSON válida.', state='unknown')
+        raise RagIngestionError('No fue posible confirmar la indexación del material.', 502) from error
 
     if isinstance(processor_response, list):
-        processor_response = processor_response[0] if processor_response else {}
-    if not isinstance(processor_response, dict):
-        processor_response = {}
+        processor_response = processor_response[0] if len(processor_response) == 1 else None
+    if not isinstance(processor_response, dict) or processor_response.get('success') is not True:
+        _set_failed(job, 'El procesador no confirmó la indexación.', state='unknown')
+        raise RagIngestionError('No fue posible confirmar la indexación del material.', 502)
     nested_response = processor_response.get('data')
     metrics = nested_response if isinstance(nested_response, dict) else processor_response
+    try:
+        processed_files = int(metrics['archivos_procesados'])
+        indexed_chunks = int(metrics.get('chunks_indexados', 0))
+        if processed_files != len(job.documents()) or indexed_chunks < 0:
+            raise ValueError('Cantidad de archivos o fragmentos inconsistente.')
+    except (KeyError, TypeError, ValueError) as error:
+        _set_failed(job, 'La confirmación de indexación tiene métricas inválidas.', state='unknown')
+        raise RagIngestionError('No fue posible confirmar la indexación completa del material.', 502) from error
 
+    catalog = metrics.get('document_catalog', [])
+    if not isinstance(catalog, list) or any(not isinstance(item, dict) for item in catalog):
+        _set_failed(job, 'El catálogo documental del procesador tiene un formato inválido.', state='unknown')
+        raise RagIngestionError('No fue posible confirmar el catálogo del material.', 502)
+    catalog_by_file = {item.get('archivo'): item for item in catalog}
+    documents = []
+    for document in job.documents():
+        entry = catalog_by_file.get(document['archivo'], {})
+        documents.append({
+            **document,
+            **{key: entry[key] for key in ('titulo', 'autor', 'paginas', 'extracto_inicial', 'secciones') if key in entry},
+        })
+    job.documentos_json = json.dumps(documents, ensure_ascii=False)
     job.estado = 'completed'
-    job.archivos_procesados = int(metrics.get('archivos_procesados') or len(job.documents()))
-    job.chunks_indexados = int(metrics.get('chunks_indexados') or 0)
+    job.archivos_procesados = processed_files
+    job.chunks_indexados = indexed_chunks
     job.respuesta_procesador_json = json.dumps(processor_response, ensure_ascii=False, default=str)
     job.error_message = None
     job.completed_at = _utcnow()
@@ -227,14 +250,33 @@ def retry_ingestion_job(user, job_id: str) -> RagIngestionJob:
 def _call_knowledge_admin_webhook(action: str, payload: dict) -> None:
     """Ask the n8n knowledge agent to perform one explicit Pinecone operation."""
     webhook_url = os.getenv('N8N_KNOWLEDGE_ADMIN_WEBHOOK_URL', '').strip()
-    if not webhook_url:
+    token = os.getenv('N8N_KNOWLEDGE_ADMIN_TOKEN', '').strip()
+    if not webhook_url or not token:
         raise RagIngestionError('La operación de limpieza de conocimiento no está configurada.', 503)
 
     try:
-        response = requests.post(webhook_url, json={'action': action, **payload}, timeout=60)
+        response = requests.post(
+            webhook_url,
+            json={'action': action, **payload},
+            headers={'X-TutorIA-Token': token},
+            timeout=60,
+        )
         response.raise_for_status()
     except requests.exceptions.RequestException as error:
         raise RagIngestionError('No fue posible actualizar la base de conocimiento.', 502) from error
+    try:
+        confirmation = response.json()
+    except ValueError as error:
+        raise RagIngestionError('El procesador no confirmó la limpieza de conocimiento.', 502) from error
+    expected_namespace = f"inst_{payload['institucion_id']}_curso_{payload['curso_id']}"
+    if (
+        not isinstance(confirmation, dict)
+        or confirmation.get('success') is not True
+        or confirmation.get('action') != action
+        or confirmation.get('namespace') != expected_namespace
+        or (action == 'delete_document' and confirmation.get('archivo') != payload.get('archivo'))
+    ):
+        raise RagIngestionError('El procesador no confirmó la limpieza de conocimiento solicitada.', 502)
 
 
 def _remove_local_job_files(job: RagIngestionJob, filenames: set[str] | None = None) -> None:
@@ -295,6 +337,27 @@ def clear_course_knowledge(user, curso_id: int) -> int:
         db.session.delete(job)
     db.session.commit()
     return len(jobs)
+
+
+def course_material_catalog(curso: Curso) -> list[dict]:
+    """Return the latest known description of each completed PDF in this course."""
+    jobs = (
+        RagIngestionJob.query
+        .filter_by(curso_id=curso.id, institucion_id=curso.institucion_id, estado='completed')
+        .order_by(RagIngestionJob.created_at.desc())
+        .all()
+    )
+    documents = {}
+    for job in jobs:
+        for document in job.documents():
+            filename = document.get('archivo')
+            if filename and filename not in documents:
+                documents[filename] = {
+                    key: document[key]
+                    for key in ('archivo', 'titulo', 'autor', 'paginas', 'extracto_inicial', 'secciones')
+                    if key in document
+                }
+    return list(documents.values())
 
 
 def course_knowledge_overview(user, curso_id: int, limit: int = 5) -> dict:

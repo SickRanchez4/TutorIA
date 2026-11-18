@@ -19,6 +19,7 @@ from models.agenda_notificaciones import ActividadAgenda
 from services.model_pricing import DEFAULT_MODEL, DEFAULT_PROVIDER, calculate_cost_usd, get_active_model_price
 from services.subscription_quota import request_is_allowed
 from services.token_counting import count_tokens
+from services.rag_ingestion import course_material_catalog
 from routes.auth_multi_tenant import estudiante_required
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,10 @@ def _build_n8n_chat_payload(sesion, message, requested_mode, student_id, max_tok
     """Build the exact payload contract expected by the n8n student-chat webhook."""
     curso = Curso.query.get(sesion.curso_id)
     config = ConfiguracionIA.query.get(sesion.curso_id)
+    recent_messages = (
+        MensajeChat.query.filter_by(sesion_chat_id=sesion.id)
+        .order_by(MensajeChat.created_at.desc()).limit(6).all()
+    )
 
     payload = {
         'institucion_id': str(curso.institucion_id) if curso else None,
@@ -85,6 +90,12 @@ def _build_n8n_chat_payload(sesion, message, requested_mode, student_id, max_tok
         'conversation_id': sesion.id,
         'message': message,
         'max_tokens': max_tokens,
+        'course_materials': course_material_catalog(curso) if curso else [],
+        'recent_history': [
+            {'role': item.rol, 'content': item.contenido[:1500]}
+            for item in reversed(recent_messages)
+            if item.rol in {'user', 'assistant'}
+        ],
     }
     if image:
         payload['image'] = image
@@ -435,6 +446,10 @@ def get_sesion_contexto(sesion_id):
         'materia_nombre': curso.nombre,
         'codigo_curso': curso.codigo,
         'modos_permitidos': modos,
+        'materiales': [
+            {'archivo': item['archivo'], 'titulo': item.get('titulo') or item['archivo']}
+            for item in course_material_catalog(curso)
+        ],
     }
     return jsonify({'contexto': contexto}), 200
 
