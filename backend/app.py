@@ -158,12 +158,14 @@ def create_app(config_name=None):
     )
 
     @app.get('/healthz')
+    @app.get('/api/healthz')
     @limiter.exempt
     def health_check():
         """Liveness probe: confirma que el proceso Flask está disponible."""
         return jsonify({'status': 'ok'}), 200
 
     @app.get('/readyz')
+    @app.get('/api/readyz')
     @limiter.exempt
     def readiness_check():
         """Readiness probe: confirma la conectividad con PostgreSQL 18."""
