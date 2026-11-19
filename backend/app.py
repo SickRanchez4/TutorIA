@@ -4,13 +4,15 @@ import os
 import sys
 import time
 import uuid
+from pathlib import Path
 
-from flask import Flask, g, jsonify, request
+from flask import Flask, abort, g, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from sqlalchemy import text
+from werkzeug.exceptions import NotFound
 from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db
 from config import config
@@ -121,14 +123,14 @@ def create_app(config_name=None):
         valid_names = ', '.join(sorted(config))
         raise RuntimeError(f'Configuración Flask inválida: {config_name}. Opciones: {valid_names}.')
 
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder=None)
     app.config.from_object(config[config_name])
     trusted_proxy_count = int(os.getenv('TRUSTED_PROXY_COUNT', '0'))
     if trusted_proxy_count > 0:
         app.wsgi_app = ProxyFix(
             app.wsgi_app,
             x_for=trusted_proxy_count,
-            # Nginx is the direct trusted hop and replaces these two headers.
+            # The direct trusted proxy replaces these two headers.
             x_proto=1,
             x_host=1,
         )
@@ -190,7 +192,26 @@ def create_app(config_name=None):
     app.register_blueprint(instituciones_bp, url_prefix='/api/admin')
     app.register_blueprint(coordinador_bp, url_prefix='/api/coordinador')
     app.register_blueprint(estudiante_bp, url_prefix='/api/estudiante')
-    
+
+    frontend_dist = Path(app.root_path) / 'static'
+    if (frontend_dist / 'index.html').is_file():
+        @app.get('/')
+        @limiter.exempt
+        def serve_frontend_index():
+            return send_from_directory(str(frontend_dist), 'index.html')
+
+        @app.get('/<path:filename>')
+        @limiter.exempt
+        def serve_frontend_file(filename):
+            if filename == 'api' or filename.startswith('api/'):
+                abort(404)
+            try:
+                return send_from_directory(str(frontend_dist), filename)
+            except NotFound:
+                if Path(filename).suffix:
+                    raise
+                return send_from_directory(str(frontend_dist), 'index.html')
+
     return app
 
 if __name__ == '__main__':

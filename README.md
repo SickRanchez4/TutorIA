@@ -51,7 +51,7 @@ n8n: tutor, recuperación, recursos, ingestión y limpieza
    modelos/embeddings   vectores por curso    respaldo de PDF
 ```
 
-En Docker, Nginx sirve la SPA y reenvía `/api` a Flask/Gunicorn; el overlay de producción añade Caddy para HTTPS. **PostgreSQL, n8n, OpenAI, Pinecone y Google Drive son servicios externos**: Compose no los instala ni crea sus credenciales. La API valida acceso y reglas de negocio; n8n orquesta las llamadas de IA e integraciones; el frontend renderiza respuestas, fórmulas y diagramas.
+En Docker, un contenedor Flask/Gunicorn sirve la SPA compilada y la API bajo el mismo origen. **PostgreSQL, n8n, OpenAI, Pinecone y Google Drive son servicios externos**: Compose no los instala ni crea sus credenciales. La API valida acceso y reglas de negocio; n8n orquesta las llamadas de IA e integraciones; el frontend renderiza respuestas, fórmulas y diagramas.
 
 | Capa | Tecnologías y responsabilidad |
 |---|---|
@@ -60,7 +60,7 @@ En Docker, Nginx sirve la SPA y reenvía `/api` a Flask/Gunicorn; el overlay de 
 | API | Python 3.13, Flask 3.1, Flask-SQLAlchemy/SQLAlchemy, Flask-JWT-Extended, Flask-CORS y Flask-Limiter |
 | Datos y utilidades | PostgreSQL 18.x mediante `psycopg[binary]`, `openpyxl` para Excel, `requests` para webhooks y `tiktoken` para estimación de tokens |
 | Automatización | n8n con nodos de IA/LangChain, ejecución de subworkflows, extracción PDF, OpenAI, Pinecone y Google Drive |
-| Operación | Docker Compose, Gunicorn, Nginx y Caddy; logs JSON, identificador de solicitud y comprobaciones de disponibilidad |
+| Operación | Docker Compose, Gunicorn; logs JSON, identificador de solicitud y comprobaciones de disponibilidad |
 | Pruebas | `unittest` y mocks para contratos backend, `node:test` para lógica de workflows, ESLint y compilación Vite |
 
 Las versiones instalables se definen en [backend/requirements.txt](backend/requirements.txt), [frontend/package.json](frontend/package.json) y [frontend/package-lock.json](frontend/package-lock.json). Los modelos y parámetros de IA se configuran en los exports n8n, no en el navegador. Actualmente el tutor y la comprobación de respaldo usan `gpt-5.4-mini`, el generador visual `gpt-5.3-codex` y los embeddings `text-embedding-3-small` con **512 dimensiones**. La cuenta OpenAI conectada debe tener acceso a ellos; un cambio de modelo requiere revisar compatibilidad, límites y tarifas, no solo el nombre.
@@ -246,10 +246,10 @@ En Docker Desktop, usar `DB_HOST=host.docker.internal` para PostgreSQL instalado
 
 ## Despliegue con Docker
 
-El despliegue crea dos servicios:
+El despliegue usa un servicio:
 
-- `frontend`: Nginx sirve la aplicación Vue y redirige `/api/*` al backend.
-- `backend`: Flask se ejecuta con Gunicorn y se conecta al PostgreSQL 18.x configurado externamente.
+- `app` (`rastone/tutoria:latest`): Gunicorn sirve la SPA Vue compilada por Vite y la API Flask bajo el mismo origen.
+- PostgreSQL 18.x, n8n y las integraciones siguen siendo servicios externos.
 
 ### 1. Configurar secretos
 
@@ -270,23 +270,25 @@ python -c "import secrets; print(secrets.token_hex(32))"
 ### 2. Construir e iniciar
 
 ```powershell
-docker compose --env-file .env.docker up --build -d
+docker compose --env-file .env.docker build
+docker compose --env-file .env.docker up -d
 ```
 
-La aplicación queda expuesta en `http://localhost:8080`, ligada a loopback por defecto. Para cambiarlo, define `APP_PORT` en `.env.docker`. `--env-file` permite que Compose también lea las variables de interpolación como `APP_PORT`; `env_file` del servicio configura el contenedor, no sustituye esa opción.
+La aplicación queda expuesta en `http://localhost:8080`, ligada a loopback por defecto. En un servidor, define `APP_PORT=8080` (o `APP_PORT=80`) para publicar el puerto del contenedor en todas las interfaces; limita el acceso mediante el firewall o el grupo de seguridad. Dentro del contenedor Gunicorn escucha en el puerto `5000`.
+
+La raíz [.dockerignore](.dockerignore) excluye los archivos `.env` del contexto y la imagen. Compose pasa `.env.docker` a la aplicación durante la ejecución. `--env-file` también permite resolver variables de Compose como `APP_PORT`. `VITE_API_URL=/api` es una opción pública de compilación, no un secreto.
 
 ### 3. Verificar el estado
 
 ```powershell
 docker compose ps
-docker compose logs -f backend
+docker compose logs -f app
 ```
 
-- `http://localhost:8080/healthz`: disponibilidad del frontend.
-- `http://localhost:8080/api/healthz`: disponibilidad del backend.
+- `http://localhost:8080/healthz` y `/api/healthz`: disponibilidad del proceso Flask.
 - `http://localhost:8080/api/readyz`: confirma conectividad con PostgreSQL y versión 18.x.
 
-Los logs del backend se emiten en JSON a `stdout` e incluyen `X-Request-ID` para correlacionar solicitudes.
+Los logs se emiten en JSON a `stdout` e incluyen `X-Request-ID` para correlacionar solicitudes.
 
 ### Operación
 
@@ -294,45 +296,43 @@ Los logs del backend se emiten en JSON a `stdout` e incluyen `X-Request-ID` para
 # Detener servicios
 docker compose down
 
-# Reconstruir después de cambios
+# Reconstruir y actualizar después de cambios
 docker compose --env-file .env.docker up --build -d
 ```
 
 ## Requisitos de producción
 
-- Use secretos administrados por el proveedor, no un archivo `.env` incluido en la imagen.
+- El contenedor sirve HTTP, no termina TLS. Para uso público, termine HTTPS en un balanceador o proxy externo; no envíe credenciales por HTTP sin una capa TLS.
+- Use secretos administrados por el proveedor cuando sea posible; nunca agregue secretos como argumentos de build ni los copie a la imagen.
 - Configure los webhooks n8n de producción con `/webhook/...`, no `/webhook-test/...`.
 - Rote cualquier secreto que haya sido expuesto y use una clave JWT aleatoria.
 - El backend utiliza `psycopg[binary]`, sin ODBC ni drivers Microsoft. PostgreSQL debe ser accesible desde el contenedor y permitir al usuario de aplicación operar sobre las tablas/secuencias de `public`.
 - Para límites de tasa persistentes entre réplicas, configure Redis como almacenamiento de Flask-Limiter antes de escalar el backend.
 
-## Despliegue en Cloud Server DonWeb
+## Despliegue en un Cloud Server
 
-La instancia Ubuntu 24.04 con Docker y Docker Compose ejecuta los dos servicios de la aplicación definidos en [docker-compose.yml](docker-compose.yml). Para producción se añade [docker-compose.production.yml](docker-compose.production.yml), que incorpora Caddy como proxy inverso y obtiene/renueva automáticamente el certificado HTTPS.
+El servidor ejecuta la imagen única de la aplicación mediante Docker Compose. La app escucha dentro del contenedor en el puerto `5000` y publica el puerto de host indicado por `APP_PORT`. No se incluye Caddy: configure HTTPS en un balanceador o proxy externo antes de exponer la aplicación públicamente.
 
-### 1. Preparar el servidor y el dominio
+### 1. Preparar el servidor
 
-1. En el panel de DonWeb, cree el Cloud Server con la imagen Docker/Ubuntu 24.04 y anote su IP pública. DonWeb ofrece acceso `root`, consola web, firewall virtual y Docker Compose preinstalado.
-2. En el proveedor DNS, cree un registro `A` para el dominio de la aplicación (por ejemplo, `app.tudominio.com`) apuntando a la IP pública del Cloud Server. Espere a que resuelva antes de iniciar Caddy; HTTPS requiere que el dominio llegue al servidor por los puertos 80 y 443.
-3. En el firewall virtual de DonWeb permita TCP `22`, `80` y `443`; no exponga `5000` ni `8080` a Internet.
-4. Conéctese por SSH y confirme las herramientas instaladas:
+1. Prepare el servidor Linux e instale Docker Engine y Docker Compose.
+2. Configure el firewall para permitir SSH y solo el puerto público previsto. Si usa un balanceador HTTPS, restrinja el puerto de la app para que solo acepte tráfico desde ese balanceador.
+3. Conéctese por SSH y confirme las herramientas:
 
 ```bash
-ssh root@IP_DEL_SERVIDOR
+ssh USUARIO@IP_DEL_SERVIDOR
 docker --version
 docker compose version
 ```
 
-5. Opcionalmente, configure el firewall del sistema como segunda capa:
+4. Opcionalmente, configure el firewall del sistema como segunda capa:
 
 ```bash
 ufw allow OpenSSH
-ufw allow 80/tcp
-ufw allow 443/tcp
 ufw enable
 ```
 
-### 2. Copiar el proyecto y configurar secretos
+### 2. Copiar el proyecto y configurar variables
 
 En el servidor, clone el repositorio en una ubicación persistente:
 
@@ -343,11 +343,10 @@ cp .env.docker.example .env.docker
 chmod 600 .env.docker
 ```
 
-Edite `.env.docker` con valores reales. Para producción configure al menos:
+Edite `.env.docker` localmente con valores reales. Configure `APP_PORT=8080` para publicar HTTP en ese puerto, o `APP_PORT=80` si HTTPS termina en un balanceador/proxy antes de la app. Configure `FRONTEND_URL` con el origen que verá el navegador. No comparta el archivo ni lo agregue a Git.
 
 ```dotenv
-APP_PORT=127.0.0.1:8080
-DOMAIN=app.tudominio.com
+APP_PORT=8080
 FRONTEND_URL=https://app.tudominio.com
 JWT_SECRET_KEY=secreto-aleatorio-largo
 DB_HOST=postgres.tudominio.com
@@ -362,44 +361,44 @@ N8N_KNOWLEDGE_ADMIN_WEBHOOK_URL=https://tu-n8n.example/webhook/knowledge-admin
 N8N_KNOWLEDGE_ADMIN_TOKEN=mismo-secreto-que-la-credencial-header-auth-de-n8n
 ```
 
-Use URLs de producción de n8n (`/webhook/...`), nunca `/webhook-test/...`. No codifique la contraseña como URL. Configure la CA confiable para `verify-full` y verifique que el firewall y `pg_hba.conf` de PostgreSQL permitan el acceso desde el backend; no publique el puerto de la base indiscriminadamente.
+Use URLs de producción de n8n (`/webhook/...`), nunca `/webhook-test/...`. No codifique la contraseña como URL. Configure la CA confiable para `verify-full` y verifique que el firewall y `pg_hba.conf` de PostgreSQL permitan el acceso desde el contenedor; no publique el puerto de la base indiscriminadamente.
 
 ### 3. Aplicar migraciones y desplegar
 
 Para una instalación nueva, ejecute sobre PostgreSQL 18.x [database/001-initial-schema.sql](database/001-initial-schema.sql) y después [database/001-seed-data.sql](database/001-seed-data.sql), según la sección de instalación inicial. En producción use el modo sin ejemplos y cambie la contraseña pública de administración antes de publicar. No vuelva a ejecutar el esquema inicial sobre una base existente: los cambios futuros requieren una migración específica.
 
-Después, construya e inicie los contenedores desde `/opt/tutoria`:
+Después, construya e inicie el contenedor desde `/opt/tutoria`:
 
 ```bash
-docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.production.yml up --build -d
-docker compose -f docker-compose.yml -f docker-compose.production.yml ps
-docker compose -f docker-compose.yml -f docker-compose.production.yml logs -f
+docker compose --env-file .env.docker build
+docker compose --env-file .env.docker up -d
+docker compose ps
+docker compose logs -f app
 ```
 
-Caddy deja el frontend interno y publica exclusivamente HTTP/HTTPS. Redirige el tráfico a Nginx del servicio `frontend`, que a su vez entrega la SPA y reenvía `/api/*` al backend. Los archivos RAG se guardan solo de forma temporal dentro del contenedor backend y se eliminan cuando este se reemplaza o se recrea.
+La imagen contiene los assets compilados de Vue y el backend Flask. Los archivos RAG se guardan solo de forma temporal dentro del contenedor y se eliminan cuando este se reemplaza o se recrea.
 
 ### 4. Verificar
 
-Cuando el certificado se haya emitido, compruebe:
+Compruebe los endpoints HTTP directamente o a través del balanceador HTTPS:
 
 ```bash
-curl -I https://app.tudominio.com/healthz
-curl -I https://app.tudominio.com/api/healthz
-curl -I https://app.tudominio.com/api/readyz
+curl -I http://IP_DEL_SERVIDOR:8080/healthz
+curl -I http://IP_DEL_SERVIDOR:8080/api/healthz
+curl -I http://IP_DEL_SERVIDOR:8080/api/readyz
 ```
 
-`/healthz` confirma el frontend, `/api/healthz` el proceso Flask y `/api/readyz` también la conexión a PostgreSQL 18.x. Si el certificado no se emite, confirme primero DNS, puertos 80/443 y los logs del contenedor `caddy`.
+`/healthz` y `/api/healthz` confirman el proceso Flask; `/api/readyz` también comprueba la conexión a PostgreSQL 18.x.
 
 ### Actualizar la aplicación
 
 ```bash
 cd /opt/tutoria
 git pull
-docker compose --env-file .env.docker -f docker-compose.yml -f docker-compose.production.yml up --build -d
-docker image prune -f
+docker compose --env-file .env.docker up --build -d
 ```
 
-No ejecute `docker compose down -v` durante una actualización: elimina los volúmenes persistentes de Caddy y obligará a emitir nuevamente los certificados HTTPS.
+No ejecute `docker compose down -v` durante una actualización si luego se agregan volúmenes persistentes para datos de la aplicación.
 
 ## Operación de la base de conocimiento RAG
 

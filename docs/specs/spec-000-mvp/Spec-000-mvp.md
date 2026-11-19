@@ -245,7 +245,7 @@ Estos scripts son de instalación, no migraciones para bases con datos.
 
 Las credenciales de proveedores se configuran en sus servicios. SQL no crea el usuario de conexión ni configura secretos de la aplicación.
 
-[docker-compose.yml](../../../docker-compose.yml) define backend y frontend. SQL Server y n8n son externos, no provisionados por Compose. [docker-compose.production.yml](../../../docker-compose.production.yml) añade Caddy, HTTP/HTTPS y volúmenes de certificados.
+[Para v0.1.0, `docker-compose.yml`](../../../docker-compose.yml) definía backend y frontend, y el overlay de producción añadía Caddy. La configuración vigente sustituye ese despliegue por una imagen de aplicación y termina HTTPS externamente; PostgreSQL 18.x y n8n siguen siendo servicios externos.
 
 Caddy entrega tráfico a Nginx; Nginx sirve la SPA y reenvía `/api` a Gunicorn. La API dispone de `/healthz` para disponibilidad del proceso y `/readyz` para SQL Server; el proxy los expone como `/api/healthz` y `/api/readyz`.
 

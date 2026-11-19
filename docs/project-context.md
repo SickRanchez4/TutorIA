@@ -95,7 +95,7 @@ La hoja de ruta de §8 delimita la evolución hacia el producto completo. El ava
 | [automation/workflows](../automation/workflows) | Exports n8n de chat, ingestión y administración del conocimiento |
 | [testing](../testing) | Proyecto independiente de pruebas, integración optativa, sistema y limpieza de datos propios |
 | [docs/specs](specs) | Constitución, requisitos, planes, tareas y evidencia por incremento |
-| [docker-compose.yml](../docker-compose.yml) y [overlay de producción](../docker-compose.production.yml) | Servicios de aplicación y proxy HTTPS; PostgreSQL 18.x y n8n son externos |
+| [docker-compose.yml](../docker-compose.yml) | Imagen única Flask/Vue; PostgreSQL 18.x y n8n son externos |
 
 ### 4.2 Primeros pasos para incorporarse
 
@@ -196,15 +196,13 @@ La navegación conserva guards por rol y autenticación; las rutas desconocidas 
 | Integraciones | n8n, OpenAI y Google Drive; Calendar es parte de la hoja de ruta, no de la integración actual |
 | Sesión | Access JWT de 24 h, almacenamiento cliente en `localStorage` y hashes compatibles con Werkzeug; seed PBKDF2-SHA256. Sin refresh implementado |
 | Calidad | `unittest` en proyecto independiente, lint/build y procedimientos de integración/sistema |
-| Despliegue | Docker Compose, Gunicorn, Nginx y Caddy/HTTPS en el overlay de producción |
+| Despliegue | Docker Compose y Gunicorn; Flask sirve la SPA compilada; HTTPS se termina externamente |
 
 La [Constitución](specs/constitution.md) exige conservar esta base salvo una spec aprobada que justifique el cambio. No es necesario sustituir el stack para desarrollar las funcionalidades pendientes.
 
 ```text
 Navegador: Vue + Vuetify + Pinia
-    -> Caddy HTTPS (overlay de producción)
-    -> Nginx: SPA y proxy /api
-    -> Flask / Gunicorn
+    -> Flask / Gunicorn: SPA y API /api
         -> PostgreSQL 18.x: datos transaccionales e historial
         -> n8n: tutor, ingestión y administración de conocimiento
             -> OpenAI, Pinecone y Google Drive según workflow
@@ -327,7 +325,7 @@ Los últimos puntos son límites conocidos del diseño/MVP, no resultados de una
 
 ### 7.3 Condiciones de operación
 
-La [guía operativa](../README.md) documenta Docker, SQL externo, n8n y despliegue con Caddy. Hay healthchecks de proceso y SQL, logs JSON e identificadores de solicitud. Esto no sustituye pruebas de entrega ni de recuperación.
+La [guía operativa](../README.md) documenta Docker, SQL externo y n8n. Hay healthchecks de proceso y SQL, logs JSON e identificadores de solicitud. HTTPS debe terminar en un componente externo. Esto no sustituye pruebas de entrega ni de recuperación.
 
 Configuración indispensable: `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_SSLMODE`, `JWT_SECRET_KEY`, orígenes frontend y URLs de los tres webhooks n8n. Se construye una URL SQLAlchemy internamente sin concatenar credenciales; se rechaza `DATABASE_URL`. Los proveedores requieren credenciales administradas fuera del código. No incluir sus valores en documentación ni reportes. La imagen usa psycopg sin ODBC.
 

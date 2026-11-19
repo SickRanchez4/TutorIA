@@ -1,8 +1,11 @@
 services:
-  backend:
+  app:
+    image: rastone/tutoria:latest
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
     env_file:
       - .env.docker
     environment:
@@ -10,31 +13,12 @@ services:
       FLASK_DEBUG: "False"
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       RAG_UPLOAD_STORAGE_PATH: /data/rag-uploads
-    expose:
-      - "5000"
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/readyz')"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_API_URL: /api
-    depends_on:
-      backend:
-        condition: service_healthy
     ports:
-      - "${APP_PORT:-127.0.0.1:8080}:80"
+      - "${APP_PORT:-127.0.0.1:8080}:5000"
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/healthz || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
